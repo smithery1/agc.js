@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "target": "ES2020",
+        "composite": true,
+        "module": "commonjs",
+        "rootDir": ".",
+        "outDir": "../build",
+        "strictNullChecks": true,
+        "lib": [
+            "ES2020",
+            "WebWorker"
+        ],
+        "sourceMap": true
+    }
+}

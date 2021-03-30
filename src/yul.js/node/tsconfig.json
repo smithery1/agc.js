@@ -1,0 +1,15 @@
+{
+    "extends": "../../tsconfig.common.json",
+    "compilerOptions": {
+        "composite": true
+    },
+    "references": [
+        {
+            "path": ".."
+        },
+        {
+            "path": "../../common/node"
+        }
+    ],
+    "include": ["*.ts"]
+}

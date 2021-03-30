@@ -1,0 +1,12 @@
+{
+    "extends": "../tsconfig.common.json",
+    "exclude": [
+        "node_modules"
+    ],
+    "references": [
+        {
+            "path": "../common"
+        }
+    ],
+    "include": ["*.ts"]
+}

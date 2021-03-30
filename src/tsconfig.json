@@ -1,0 +1,18 @@
+{
+    "extends": "./tsconfig.common.json",
+    "references": [
+        {
+            "path": "./common"
+        },
+        {
+            "path": "./common/node"
+        },
+        {
+            "path": "./yul.js"
+        },
+        {
+            "path": "./yul.js/node"
+        },
+    ],
+    "files": []
+}

@@ -1,0 +1,28 @@
+{
+    "env": {
+        "browser": true,
+        "es2021": true,
+        "node": true
+    },
+    "extends": [
+        "standard-with-typescript"
+    ],
+    "parser": "@typescript-eslint/parser",
+    "parserOptions": {
+        "ecmaVersion": 12,
+        "sourceType": "module",
+        "project": [
+            "./src/common/tsconfig.json",
+            "./src/common/node/tsconfig.json",
+            "./src/yul.js/tsconfig.json",
+            "./src/yul.js/node/tsconfig.json"
+        ]
+    },
+    "plugins": [
+        "@typescript-eslint"
+    ],
+    "rules": {
+        "@typescript-eslint/strict-boolean-expressions": "error",
+        "operator-linebreak": ["error", "before"]
+    }
+}

@@ -1,0 +1,9 @@
+{
+    "references": [
+        {
+            "path": "./src"
+        }
+    ],
+    "files": []
+    // "include": ["src/**/*.ts"]
+}
