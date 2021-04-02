@@ -38,9 +38,9 @@ Step one is in progress. The assembler "yul.js" produces correct binary output f
 
 ## Bibliography {#bibliography}
 
-\B. Savage and A. Drake, "Apollo Guidance, Navigation and Control", MIT Instrumentation Laboratory, Cambridge, MA, E-2052, January 1967, http://www.ibiblio.org/apollo/NARA-SW/E-2052.pdf.
+B\. Savage and A. Drake, "ACCG4 Basic Training Manual", MIT Instrumentation Laboratory, Cambridge, MA, E-2052, January 1967, http://www.ibiblio.org/apollo/NARA-SW/E-2052.pdf.
 
-\H. Blair-Smith, "AGC4 MEMO # 9 - Block II Instructions", MIT Instrumentation Laboratory, Cambridge, MA, Revised July 1, 1966, https://www.ibiblio.org/apollo/hrst/archive/1689.pdf.
+H\. Blair-Smith, "AGC4 MEMO # 9 - Block II Instructions", MIT Instrumentation Laboratory, Cambridge, MA, Revised July 1, 1966, https://www.ibiblio.org/apollo/hrst/archive/1689.pdf.
 
 "Apollo Guidance Program Symbolic Listing Information for Block 2", MIT Instrumentation Laboratory, Cambridge, MA, NAS 9-8166, November 20, 1969, https://www.ibiblio.org/apollo/Documents/SymbolicListingInformation.pdf.
 
@@ -48,4 +48,4 @@ Step one is in progress. The assembler "yul.js" produces correct binary output f
 
 F\. O'Brien, *The Apollo Guidance Computer: Architecture and Operation", Chichester, UK: Praxis Publishing Ltd., 2010.
 
-\R. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
+R\. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.

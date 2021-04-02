@@ -1,15 +1,14 @@
-/**
- * Assembler instruction sets.
- * @module instructions
- *
- * References
- * 1. "Apollo Guidance Computer Information Series Issue 13: YUL Programming System",
- *    FR-2-113, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf
- * 2. "Apollo Guidance Program Symbolic Listing Information for Block 2", NAS 9-8166,
- *    https://www.ibiblio.org/apollo/Documents/SymbolicListingInformation.pdf
- * 3. The one with tables
- */
+//
+// This file contains definitions for all the operation codes.
+// The various documentation sources were written at different times and disagree on some particulars.
+// Where those particulars might be important, they are mentioned in comments.
+// The general rule here is that if an operation is in the documentation but not in any of the code, it is not
+// implemented.
+//
 
+/**
+ * The requirements for the presence of field.
+ */
 export enum Necessity {
   Never,
   Optional,
@@ -37,15 +36,17 @@ export interface BaseOperation {
 }
 
 /**
- * Address constant instructions
+ * Address constant card operations.
  *
- * TODO: Cite and clean up from an authoritative source
+ * Ref YUL, 13-134 "Address Constant Cards"
  */
 export interface AddressConstant extends BaseOperation {
 }
 
-export enum BasicOperandType {
-  None,
+/**
+ * The allowable values for a basic opcode address field.
+ */
+export enum BasicAddressRange {
   ErasableMemory,
   FixedMemory,
   AnyMemory,
@@ -53,31 +54,51 @@ export enum BasicOperandType {
 }
 
 /**
- * Basic opcodes
+ * Instruction card basic operations.
  *
- * TODO: Cite and clean up from an authoritative source
+ * Ref YUL, 13-115 "Instruction Cards"
  */
 export interface Basic extends BaseOperation {
+  /**
+   * If this is an extended instruction.
+   */
   readonly isExtended: boolean
+  /**
+   * Whether this instruction requires an address field.
+   */
   readonly addressField: Necessity
+  /**
+   * The op code for this instruction.
+   */
   readonly opCode: number
+  /**
+   * The quarter code for this instruction, if it uses one.
+   */
   readonly qc?: number
-  readonly operandType: BasicOperandType
+  /**
+   * The allowable values for the address field.
+   */
+  readonly addressRange: BasicAddressRange
+  /**
+   * Whether the operator uses a special fixed address.
+   * E.g. TC 6 for EXTEND.
+   */
   readonly specialAddress?: number
+  /**
+   * A bias value to be applied to any address for this instruction.
+   * E.g. 1 for DDOUBL
+   */
   readonly addressBias?: number
 }
 
 /**
- * Clerical opcodes
+ * Clerical card operations
  *
- * Ref 1, Section 13-154 "Clerical Cards"
- * Ref 2, III-8 - III-11 "Format of Guidance Program Symbolic Listing: Card Layout"
+ * Ref YUL, 13-154 "Clerical Cards"
  *
- * (1) and elsewhere refer to HEAD and TAIL codes used as a sort of namespacing for subroutines, but
- * since no examples appear in the AGC code and they are not mentioned in (2), they are not supported
- * here at this time.
- *
- * (1) also includes details for a MEMORY code, but it is also not used in the AGC code and is not supported here.
+ * There are a handful of codes referred to in Ref YUL but that do not appear in the source, such as HEAD, TAIL, and
+ * MEMORY.
+ * They are not supported here.
  */
 export interface Clerical extends BaseOperation {
   readonly locationField: Necessity
@@ -87,9 +108,9 @@ export interface Clerical extends BaseOperation {
 }
 
 /**
- * Numeric constant opcodes
+ * Numeric constant card operations.
  *
- * TODO: Cite and clean up from an authoritative source
+ * Ref YUL, 13-139 "Numeric Constant Cards"
  */
 export interface NumericConstant extends BaseOperation {
 }
@@ -102,6 +123,11 @@ export enum InterpretiveOperandType {
   Constant
 }
 
+/**
+ * The type of an interpretive operand.
+ *
+ * Ref SYM, VIB-1
+ */
 export enum InterpretiveType {
   Indexable,
   Misc,
@@ -110,8 +136,11 @@ export enum InterpretiveType {
   Store,
   Unary
 }
+
 /**
- * An interpretive operand
+ * An interpretive operand.
+ *
+ * The various fields are from the table in Ref BTM, 2-12 - 2-17.
  */
 export interface InterpretiveOperand {
   readonly type: InterpretiveOperandType
@@ -122,6 +151,11 @@ export interface InterpretiveOperand {
   readonly fixedMemory: boolean
 }
 
+/**
+ * Instruction card interpretive operations.
+ *
+ * Ref YUL, 13-115 "Instruction Cards"
+ */
 export interface Interpretive extends BaseOperation {
   readonly subType: InterpretiveType
   readonly rhs: boolean
@@ -131,15 +165,32 @@ export interface Interpretive extends BaseOperation {
   readonly operand2?: InterpretiveOperand
 }
 
+/**
+ * The operation union type.
+ */
 export type Operation = AddressConstant | Basic | Clerical | NumericConstant | Interpretive
 
 const ops = new Map<string, BaseOperation>()
 
-export function operation (symbol: string): BaseOperation | undefined {
+/**
+ * Returns the operation for the specified symbol.
+ * Returns undefined if no operation has the specified symbol name.
+ *
+ * @param symbol the symbol to look up
+ * @returns the operation for the specified symbol
+ */
+export function operation (symbol: string): Operation | undefined {
   return ops.get(symbol)
 }
 
-export function requireOperation (symbol: string): BaseOperation {
+/**
+ * Returns the operation for the specified symbol.
+ * Throws an Error if no operation has the specified symbol name.
+ *
+ * @param symbol the symbol to look up
+ * @returns the operation for the specified symbol
+ */
+export function requireOperation (symbol: string): Operation {
   const op = operation(symbol)
   if (op === undefined) {
     throw new Error('unknown operation ' + symbol)
@@ -147,7 +198,7 @@ export function requireOperation (symbol: string): BaseOperation {
   return op
 }
 
-function add (symbol: string, op: BaseOperation): void {
+function add (symbol: string, op: Operation): void {
   if (ops.has(symbol)) {
     throw new Error('duplicate symbol: ' + symbol)
   }
@@ -167,11 +218,11 @@ function addAddress (symbol: string, words: number): void {
 }
 
 function addBasicQc (symbol: string, opCode: number, qc: number, addressBias?: number): void {
-  addBasicExtended(false, symbol, opCode, qc, BasicOperandType.ErasableMemory, addressBias)
+  addBasicExtended(false, symbol, opCode, qc, BasicAddressRange.ErasableMemory, addressBias)
 }
 
-function addBasic (symbol: string, opCode: number, memoryType: BasicOperandType, addressBias?: number): void {
-  addBasicExtended(false, symbol, opCode, undefined, memoryType, addressBias)
+function addBasic (symbol: string, opCode: number, addressRange: BasicAddressRange, addressBias?: number): void {
+  addBasicExtended(false, symbol, opCode, undefined, addressRange, addressBias)
 }
 
 function addBasicSpecial (symbol: string, opCode: number, specialAddress: number): void {
@@ -189,11 +240,11 @@ function addBasicQcSpecial (symbol: string, opCode: number, qc: number, specialA
 }
 
 function addExtendedQc (symbol: string, opCode: number, qc: number, addressBias?: number): void {
-  addBasicExtended(true, symbol, opCode, qc, BasicOperandType.ErasableMemory, addressBias)
+  addBasicExtended(true, symbol, opCode, qc, BasicAddressRange.ErasableMemory, addressBias)
 }
 
-function addExtended (symbol: string, opCode: number, memoryType: BasicOperandType, addressBias?: number): void {
-  addBasicExtended(true, symbol, opCode, undefined, memoryType, addressBias)
+function addExtended (symbol: string, opCode: number, addressRange: BasicAddressRange, addressBias?: number): void {
+  addBasicExtended(true, symbol, opCode, undefined, addressRange, addressBias)
 }
 
 function addExtendedSpecial (symbol: string, opCode: number, specialAddress: number): void {
@@ -217,7 +268,7 @@ function addExtendedIO (symbol: string, pc: number): void {
     isExtended: true,
     opCode: 0,
     qc: pc,
-    operandType: BasicOperandType.IOChannel,
+    addressRange: BasicAddressRange.IOChannel,
     addressField: Necessity.Required,
     words: 1
   }
@@ -229,7 +280,7 @@ function addBasicExtended (
   symbol: string,
   opCode: number,
   qc: number | undefined,
-  memoryType: BasicOperandType,
+  addressRange: BasicAddressRange,
   addressBias?: number):
   void {
   const op = {
@@ -238,7 +289,7 @@ function addBasicExtended (
     isExtended,
     opCode,
     qc: qc,
-    operandType: memoryType,
+    addressRange,
     addressBias,
     addressField: Necessity.Optional,
     words: 1
@@ -376,21 +427,14 @@ function alias (alias: string, original: string): void {
 //
 // Clerical
 //
-// Ref 2, VB-3
-// Other allocations
 // Note erase can be 0 or 1 words, depending on the address field.
 // This is handled in the assembler, but the parser needs it to be non-zero to perform other checks.
 addClerical('ERASE', 1, Necessity.Optional, Necessity.Optional, Necessity.Never, Necessity.Never)
-// Misc
 addClerical('BANK', 0, Necessity.Never, Necessity.Optional, Necessity.Never, Necessity.Never)
 addClerical('BLOCK', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
 addClerical('BNKSUM', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
-addClerical('COUNT', 0, Necessity.Never, Necessity.Optional, Necessity.Never, Necessity.Optional)
+addClerical('COUNT', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Optional)
 addClerical('EBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Required)
-// Ref 1, 13-173 - 13-176
-// Ref 2, III-8 - III-11 "Format of Guidance Program Symbolic Listing: Card Layout"
-// Neither (1) nor (2) provide for an EQUALS card without a location field, but they
-// appear in the AGC code and are the LC value.
 addClerical('EQUALS', 0, Necessity.Required, Necessity.Optional, Necessity.Never, Necessity.Never)
 alias('=', 'EQUALS')
 addClerical('SBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
@@ -412,9 +456,7 @@ addAddress('GENADR', 1)
 addAddress('P', 1)
 alias('', 'P')
 addAddress('REMADR', 1)
-// NOTE: Only documented in YUL docs, never used
-// addAddress('XCADR', 1)
-// Telemetry downlist: Ref 2, VC-1 & VC-3
+// Telemetry downlist: Ref SYM, VC-1 & VC-3
 addAddress('DNCHAN', 1)
 addAddress('DNPTR', 1)
 addAddress('1DNADR', 1)
@@ -440,20 +482,20 @@ alias('NV', 'VN')
 //
 // Basic
 //
-addBasic('TC', 0, BasicOperandType.AnyMemory)
+addBasic('TC', 0, BasicAddressRange.AnyMemory)
 addBasicSpecial('RELINT', 0, 3)
 addBasicSpecial('INHINT', 0, 4)
 addBasicSpecial('EXTEND', 0, 6)
 addBasicQc('CCS', 1, 0)
-addBasic('TCF', 1, BasicOperandType.FixedMemory)
+addBasic('TCF', 1, BasicAddressRange.FixedMemory)
 addBasicQc('DAS', 2, 0, 1)
 addBasicQc('LXCH', 2, 1)
 addBasicQc('INCR', 2, 2)
 addBasicQc('ADS', 2, 3)
-addBasic('CA', 3, BasicOperandType.AnyMemory)
-addBasic('CAE', 3, BasicOperandType.ErasableMemory)
-addBasic('CAF', 3, BasicOperandType.FixedMemory)
-addBasic('CS', 4, BasicOperandType.AnyMemory)
+addBasic('CA', 3, BasicAddressRange.AnyMemory)
+addBasic('CAE', 3, BasicAddressRange.ErasableMemory)
+addBasic('CAF', 3, BasicAddressRange.FixedMemory)
+addBasic('CS', 4, BasicAddressRange.AnyMemory)
 addBasicQc('TS', 5, 2)
 // There are two INDEXES, one basic and one extended.
 // This is the basic one.
@@ -462,18 +504,19 @@ addBasicQc('INDEX', 5, 0)
 addBasicSpecial('RESUME', 5, 15)
 addBasicQc('DXCH', 5, 1, 1)
 addBasicQc('XCH', 5, 3)
-addBasic('AD', 6, BasicOperandType.AnyMemory)
-addBasic('MASK', 7, BasicOperandType.AnyMemory)
+addBasic('AD', 6, BasicAddressRange.AnyMemory)
+addBasic('MASK', 7, BasicAddressRange.AnyMemory)
 // Implied Address Codes
 addBasicSpecial('COM', 4, 0)
 addBasicQcSpecial('DDOUBL', 2, 0, 1)
 addBasicSpecial('DOUBLE', 6, 0)
 addBasicQcSpecial('DTCB', 5, 1, 6)
 addBasicQcSpecial('DTCF', 5, 1, 5)
-// There are two NOOPs, one if in fixed memory and one if in erasable memory.
+// There are two NOOP opcodes, one if in fixed memory and one if in erasable memory.
 // The erasable one is equivalent to CA A (30000), but we don't assemble into erasable memory.
-// The fixed one is equivalent to TCF (I + 1)
-addBasic('NOOP', 1, BasicOperandType.FixedMemory, 1)
+// The fixed one is equivalent to TCF (I + 1).
+// REF BTM, Figure 7, page 1-45
+addBasic('NOOP', 1, BasicAddressRange.FixedMemory, 1)
 addBasicQcSpecial('OVSK', 5, 2, 0)
 addBasicSpecial('RETURN', 0, 2)
 addBasicQcSpecial('TCAA', 5, 2, 5)
@@ -504,19 +547,19 @@ addExtendedIO('ROR', 4)
 addExtendedIO('WOR', 5)
 addExtendedIO('RXOR', 6)
 
-addExtended('EDRUPT', 0, BasicOperandType.FixedMemory)
+addExtended('EDRUPT', 0, BasicAddressRange.FixedMemory)
 addExtendedQc('DV', 1, 0)
-addExtended('BZF', 1, BasicOperandType.FixedMemory)
+addExtended('BZF', 1, BasicAddressRange.FixedMemory)
 addExtendedQc('MSU', 2, 0)
 addExtendedQc('QXCH', 2, 1)
 addExtendedQc('AUG', 2, 2)
 addExtendedQc('DIM', 2, 3)
-addExtended('DCA', 3, BasicOperandType.AnyMemory, 1)
-addExtended('DCS', 4, BasicOperandType.AnyMemory, 1)
+addExtended('DCA', 3, BasicAddressRange.AnyMemory, 1)
+addExtended('DCS', 4, BasicAddressRange.AnyMemory, 1)
 // INDEX is defined as a non-extended, might need it here too?
 addExtendedQc('SU', 6, 0)
-addExtended('BZMF', 6, BasicOperandType.FixedMemory)
-addExtended('MP', 7, BasicOperandType.AnyMemory)
+addExtended('BZMF', 6, BasicAddressRange.FixedMemory)
+addExtended('MP', 7, BasicAddressRange.AnyMemory)
 // Implied Address Codes
 addExtendedSpecial('DCOM', 4, 1)
 addExtendedSpecial('SQUARE', 7, 0)
@@ -529,19 +572,16 @@ addExtendedQcSpecial('ZQ', 2, 1, 7)
 //
 // Interpreter
 //
-// Note data mostly from tables in Ref 3, 2-12 - 2-17 but these are wrong in a couple of cases.
-// CCALL, CGOTO, PUSHD, SIGN: should be "push", verified from INTERPRETER page 1011
-// PDVL: shound not be "push" per 1, but seems to be used that way - check into
-// SIGN: indexable and applies to fixed mem per VIB-11 - check into
-// NORM: indexable per VB-26 - check into
-// Note: Indexed appear to base base + 200 octal (BDDV* is 3 22 octal, etc.)
+// Note data mostly from tables in Ref BTM, 2-12 - 2-17 but these are wrong in a couple of cases.
+// CCALL, CGOTO, PUSHD, SIGN: should be "push", verified from Luminary099 INTERPRETER page 1011.
+// PDVL: should not be "push" per Ref BTM, but seems to be used that way.
+// SIGN: indexable and applies to fixed mem per Ref SYM, VIB-11.
+// NORM: indexable per Ref SYM, VB-26.
 //
-// Ref YUL, 13-137
-export const STORE_OFFSET = 0x3400
 
-// Ref 3, VIB-50 prefix 2, selection code 34
+// Ref SYM, VIB-50 prefix 2, selection code 34
 const INTERPRETIVE_OPCODE_LOGICAL = 114
-// Ref 3, VIB-26 prefix 1, selection code 23
+// Ref SYM, VIB-26 prefix 1, selection code 23
 const INTERPRETIVE_OPCODE_SHIFT = 77
 
 // Scalar computations

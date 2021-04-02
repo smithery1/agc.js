@@ -4,15 +4,30 @@ import * as addressing from './addressing'
 import { AssembledCard, getCusses } from './assembly'
 import { Cells } from './cells'
 import * as cusses from './cusses'
+import { LineType } from './lexer'
 import * as parse from './parser'
 import { Pass1SymbolTable, Pass2SymbolTable } from './symbol-table'
 
+/**
+ * The output from pass 1 assembly.
+ * Contains a card per significant input line (remark or code), the symbol table ready for pass 2, and the cells with
+ * cards but not values assigned.
+ *
+ * The cards are returned in input order, not memory order.
+ */
 export interface Pass1Output {
-  readonly inputCards: AssembledCard[]
+  readonly cards: AssembledCard[]
   readonly symbolTable: Pass2SymbolTable
   readonly cells: Cells
 }
 
+/**
+ * The pass 1 assembler.
+ * - Lexes and parses each input line into an AssembledCard
+ * - Assigns each such card that defines a memory word to its proper address in a Cells class
+ * - Associates location field symbols with their addresses in the symbol table
+ * - Associates EQUALS symbols with their values in the symbol table
+ */
 export class Pass1Assembler {
   private readonly cardDispatch = {
     [parse.CardType.Basic]: this.onBasicInstructionCard.bind(this),
@@ -31,18 +46,24 @@ export class Pass1Assembler {
   }
 
   private symbolTable: Pass1SymbolTable
-  private inputCards: AssembledCard[]
+  private cards: AssembledCard[]
   private cells: Cells
   private urlBase: string
   private locationCounter: number | undefined
 
+  /**
+   * Runs this assembler on the specified URL, which typically points to a MAIN.agc yaYUL formatted file.
+   *
+   * @param mainUrl the URL of the starting file
+   * @returns the pass 1 output, or a cuss if there was an error reading a URL
+   */
   async assemble (mainUrl: string): Promise<Pass1Output | cusses.CussInstance> {
     const index = mainUrl.lastIndexOf('/')
     if (index < 0) {
       return { cuss: cusses.Cuss2A, context: [mainUrl] }
     }
     this.symbolTable = new Pass1SymbolTable()
-    this.inputCards = []
+    this.cards = []
     this.cells = new Cells()
     this.urlBase = mainUrl.substring(0, index)
 
@@ -59,7 +80,7 @@ export class Pass1Assembler {
       return { cuss: cusses.Cuss2A, error, context: [mainUrl] }
     }
 
-    return { inputCards: this.inputCards, symbolTable, cells: this.cells }
+    return { cards: this.cards, symbolTable, cells: this.cells }
   }
 
   private async assembleFile (url: string, parser: parse.Parser): Promise<cusses.CussInstance | undefined> {
@@ -68,7 +89,11 @@ export class Pass1Assembler {
     for await (const parsedCard of parser.parse(url, stream)) {
       const card = parsedCard.card
       if (card === undefined) {
-        this.outputErrorLine(parsedCard)
+        if (parsedCard.lexedLine.type === LineType.Pagination) {
+          this.outputPagination(parsedCard)
+        } else {
+          this.outputErrorLine(parsedCard)
+        }
       } else {
         if (parse.isInsertion(card)) {
           const result = await this.insertSource(card, parser)
@@ -84,10 +109,22 @@ export class Pass1Assembler {
     }
   }
 
-  private outputErrorLine (parsedCard: parse.ParsedCard): void {
-    this.inputCards.push({
+  private outputPagination (parsedCard: parse.ParsedCard): void {
+    this.cards.push({
       lexedLine: parsedCard.lexedLine,
       extent: 0,
+      count: 0,
+      eBank: 0,
+      sBank: 0,
+      cusses: parsedCard.cusses
+    })
+  }
+
+  private outputErrorLine (parsedCard: parse.ParsedCard): void {
+    this.cards.push({
+      lexedLine: parsedCard.lexedLine,
+      extent: 0,
+      count: 0,
       eBank: 0,
       sBank: 0,
       cusses: parsedCard.cusses
@@ -99,10 +136,11 @@ export class Pass1Assembler {
       lexedLine: parsedCard.lexedLine,
       card: parsedCard.card,
       extent: 0,
+      count: 0,
       eBank: 0,
       sBank: 0
     }
-    this.inputCards.push(assembled)
+    this.cards.push(assembled)
   }
 
   private async insertSource (
@@ -119,13 +157,14 @@ export class Pass1Assembler {
   }
 
   private assembleCard (parsedCard: parse.ParsedCard): void {
-    const card = parsedCard.card as parse.InstructionCard
+    const card = parsedCard.card as parse.AssemblyCard
     const cardCusses = new cusses.Cusses()
     cardCusses.addAll(parsedCard.cusses)
     const assembled: AssembledCard = {
       lexedLine: parsedCard.lexedLine,
       card,
       extent: 0,
+      count: 0,
       eBank: 0,
       sBank: 0,
       cusses: cardCusses
@@ -135,7 +174,7 @@ export class Pass1Assembler {
     this.cardDispatch[card.type](card, assembled)
     this.assignCells(assembled)
     assembled.cusses = cardCusses.empty() ? undefined : cardCusses
-    this.inputCards.push(assembled)
+    this.cards.push(assembled)
     if ((assembled.refAddress ?? -1) === this.locationCounter) {
       this.setLocationCounter(this.locationCounter + assembled.extent)
     }
@@ -206,16 +245,6 @@ export class Pass1Assembler {
     }
   }
 
-  private findFree (bank: { min: number, max: number }): number {
-    for (let i = bank.min; i < bank.max; i++) {
-      if (!this.cells.isAssigned(i)) {
-        return i
-      }
-    }
-
-    return -1
-  }
-
   private onSetLocCard (card: parse.ClericalCard, assembled: AssembledCard): void {
     if (card.address !== undefined) {
       const resolved = field.resolve(card.address, this.locationCounter, assembled, this.symbolTable)
@@ -258,8 +287,8 @@ export class Pass1Assembler {
       return
     }
 
-    const address = this.findFree(bankRange)
-    if (address > 0) {
+    const address = this.cells.findFree(bankRange)
+    if (address !== undefined) {
       assembled.refAddress = address
       assembled.sBank = sBank ?? 0
       assembled.extent = 0
@@ -288,11 +317,14 @@ export class Pass1Assembler {
       return
     }
 
-    const address = this.findFree(bankRange)
-    if (address > 0) {
+    const address = this.cells.findFree(bankRange)
+    if (address !== undefined) {
       assembled.refAddress = address
       assembled.extent = 0
       this.setLocationCounter(address)
+    } else {
+      getCusses(assembled).add(cusses.Cuss4F, 'Ignoring instructions until next SETLOC/BANK/BLOCK')
+      this.setLocationCounter(undefined)
     }
   }
 
@@ -330,8 +362,8 @@ export class Pass1Assembler {
         return
       }
 
-      if (!addressing.isBankedErasable(addressing.addressType(start))
-        || !addressing.isBankedErasable(addressing.addressType(start + extent))) {
+      if (!canErase(addressing.memoryArea(start))
+        || !canErase(addressing.memoryArea(start + extent))) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
       }
@@ -341,6 +373,11 @@ export class Pass1Assembler {
     }
 
     this.symbolTable.assignAddress(card.location, assembled)
+
+    function canErase (area: addressing.MemoryArea): boolean {
+      return area === addressing.MemoryArea.Unswitched_Banked_Erasable
+          || area === addressing.MemoryArea.Switched_Erasable
+    }
   }
 
   private onEqualsCard (card: parse.ClericalCard, assembled: AssembledCard): void {

@@ -2,39 +2,8 @@ import { InputStream } from '../common/compat'
 import { isWhitespace } from './util'
 
 /**
- * Lexer module.
- *
- * References
- * 1. "Apollo Guidance Computer Information Series Issue 13: YUL Programming System",
- *    FR-2-113, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf
- * 2. "Apollo Guidance Program Symbolic Listing Information for Block 2", NAS 9-8166,
- *    https://www.ibiblio.org/apollo/Documents/SymbolicListingInformation.pdf
- * 3. Ron Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information"
- *    https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting
- *
- * Since the original YUL read card inputs, it did not need to lex words per se and used column ranges to read fields.
- * In that spirit, this lexer defines fields by column ranges as well, with some caveats to match the yaYUL input.
- * Lexing with only whitespace to separate fields introduces certain ambiguities that, while of limited practical
- * impact, would not necessarily have been an issue for YUL.
- * For example, YUL discouraged but did not prevent things like embedded spaces in symbols and defining symbols that
- * match instruction codes.
- *
- * Per (3), yaYUL strips columns 1-8, and empirically has a 16 character location field and generally aligns fields with
- * 8-column tabs or equivalent spaces.
- *
- * (1) 13-114 specifies the ability to provide an absolute address in the location and address fields, but since no
- * examples appear in the AGC code, it is not supported here at this time.
- *
- * An offset is allowed in the location field.
- * It is ignored per (1) 13-114, and is not validated for correctness beyond basic syntax.
- * (yaYUL requires optional leading spaces for the offset, but per (1) 13-114 this seems to have been allowed by not
- * required by YUL since a symbolic subfield is defined as non-numeric.
- * We allow but do not require leading spaces.)
- *
- * Extra text beyond the rightmost token is captured and warned, although the original YUL
- * probably didn't do this.
-*/
-
+ * The type of line lexed.
+ */
 export enum LineType {
   Insertion,
   Remark,
@@ -42,6 +11,9 @@ export enum LineType {
   Instruction
 }
 
+/**
+ * Information about the source of the lexed line.
+ */
 export interface SourceLine {
   source: string
   lineNumber: number
@@ -49,6 +21,12 @@ export interface SourceLine {
   line: string
 }
 
+/**
+ * The lexed line.
+ * Each line has up to three fields (location, operator, and operand) and a remark.
+ * If type is Remark, field1 will be undefined if the remark spanned the full line, and an empty string if the remark
+ * began in the middle of an otherwise empty line.
+ */
 export interface LexedLine {
   type: LineType
   sourceLine: SourceLine
@@ -58,16 +36,37 @@ export interface LexedLine {
   remark?: string
 }
 
+/**
+ * The yaYUL main source file, which includes all the others.
+ * Comments in this file are ignored, while in other files they are preserved as "Remark"s.
+ */
 const MAIN_SOURCE = '/MAIN.agc'
+/**
+ * A yaYUL insertion statement.
+ */
+const INSERTION_EXPR = /^\$(.*)/
+/**
+ * A yaYUL page comment.
+ * The page numbers are returned as Pagination line types, and are preserved upstream for eventual output with the code.
+ */
 const PAGE_EXPR = /^## Page ([0-9]+)/
 
 /**
- * A yaYUL insertion statement.
+ * Emits a LexedLine for each significant line of the specified source.
+ * A line is significant if it contains an original remark, a pagination remark, an insertion statement, or code.
+ * Non-significant lines are those that are blank or contain a yaYUL comment.
  *
- * Ref 3
+ * An original remark is a comment outside MAIN.agc with a single hash (#).
+ * A pagination remark is a line of the form "## Page 123".
+ * An insertion statement is a line of the "$file.agc" (anything after the "$" is treated as the file name).
+ * Code is any other non-blank non-comment line.
+ *
+ * Ref yaYUL for the most of the formatting here.
+ *
+ * @param source the name of the source, returned in each LexedLine
+ * @param stream the source as a stream
+ * @returns the lines
  */
-const INSERTION_EXPR = /^\$(.*)/
-
 export async function * lex (source: string, stream: InputStream): AsyncGenerator<LexedLine> {
   const isMainSource = source.endsWith(MAIN_SOURCE)
   let value: string
@@ -87,7 +86,10 @@ export async function * lex (source: string, stream: InputStream): AsyncGenerato
       const result = lexLine(source, isMainSource, lineNumber, page, line)
       start = eol + 1
       if (typeof result === 'number') {
-        page = result
+        if (page !== result) {
+          page = result
+          yield { type: LineType.Pagination, sourceLine: { source, lineNumber, page, line } }
+        }
       } else if (result !== undefined) {
         yield result
       }

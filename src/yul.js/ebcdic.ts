@@ -58,11 +58,11 @@ const PRINTABLE_ASCII_TO_EBCDIC = [
   231, // X
   232, // Y
   233, // Z
-  -1, // [
+  347, // [ (no equivalent)
   224, // \
-  -1, // ]
-  -1, // ^
-  -1, // _
+  349, // ] (no equivalent)
+  350, // ^ (no equivalent)
+  351, // _ (no equivalent)
   121, // `
   129, // a
   130, // b
@@ -99,6 +99,13 @@ const PRINTABLE_ASCII_TO_EBCDIC = [
 const TABLE_START = ' '.charCodeAt(0)
 const TABLE_END = '~'.charCodeAt(0)
 
+/**
+ * Returns the EBCDIC code equivalent to the specified ASCII code.
+ * If there is no equivalent, returns the ASCII code plus 256.
+ *
+ * @param ascii the ASCII code
+ * @returns the EBCDIC code equivalent to the specified ASCII code
+ */
 export function asciiToEbcdic (ascii: number): number {
   if (ascii < TABLE_START || ascii > TABLE_END) {
     return 256 + ascii

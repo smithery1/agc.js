@@ -1,22 +1,22 @@
-/**
- * Numeric module.
- * @module jeyul/numeric
- *
- * References
- * 1. "Apollo Guidance Computer Information Series Issue 13: YUL Programming System",
- *    FR-2-113, Section 13-139, "Numeric Constant Cards", https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf
-*/
-
 import * as cusses from './cusses'
 import { Operation } from './operations'
 import { isWhitespace } from './util'
 
+//
+// The format of the numeric constant cards is from Ref YUL, 13-139 "Numeric Constant Cards".
+// Most of the logic here is based on that information.
+//
+
+/**
+ * The result of lexing a numeric card field.
+ * Contains a low word an optional high for double-precision fields.
+ */
 export interface Words {
   highWord?: number
   lowWord: number
 }
 
-// "Mantissa" naming per Ref 1, 13-145 and 13-147
+// "Mantissa" naming per Ref YUL, 13-145 and 13-147
 interface Mantissa { whole: string, fractional: string }
 interface Parts { positive?: boolean, mantissa?: Mantissa, exponent?: number, scaling?: number }
 
@@ -30,13 +30,23 @@ const DP_LOGICAL_MAX = 0x40000000
 const SP_NEGATE_MASK = 0x7FFF
 const DP_LOW_INT_WORD_MASK = 0x3FFF
 const DP_LOW_LOGICAL_WORD_MASK = 0x7FFF
-// YUL (ref?) says only 10 decimal and 14 octal significant digits are allowed,
-// and anything beyond is truncated.
-// But code has more than that, and truncating results in mismaatches values vs. actual.
+// Ref YUL, 13-143 says only 10 decimal and 14 octal significant digits are allowed, and anything beyond is truncated.
+// But code has more than that, and truncating results in mismatched values vs. actual.
 // So allow more here.
 const DECIMAL_MAX_DIGITS = 20
 const OCTAL_MAX_DIGITS = 24
 
+/**
+ * Attempts to translate the specified token into a number based on the specified operation.
+ * Failure to do so results in one or more cusses added to localCusses and returning undefined.
+ * The operation must be DEC, 2DEC, OCT, or 2OCT.
+ *
+ * @param op the operation whose operand is given in token
+ * @param isExtended whether the token is an "extended" address field (Ref YUL, 13-142)
+ * @param token the address field token
+ * @param localCusses cusses to added to on lexing errors
+ * @returns the lexed number(s)
+ */
 export function lexNumeric (
   op: Operation, isExtended: boolean, token: string, localCusses: cusses.Cusses): Words | undefined {
   const isDp = op.words === 2
@@ -95,21 +105,22 @@ function lexDecimal (
   const { numerator: scaleNum, denominator: scaleDenom } = base10Scaling(exp, scaling)
   const max = isDp ? DP_INT_MAX : SP_INT_MAX
   if (scaleNum > scaleDenom && decimal > max) {
-    // Ref 1, 13-147. Out of range, so don't both scaling.
+    // Ref YUL, 13-147. Out of range, so don't both scaling.
     localCusses.add(cusses.Cuss1E)
     return undefined
   }
   decimal *= scaleNum / scaleDenom
 
-  // Ref 1, 13-147.
+  // Ref YUL, 13-147
   if (decimal < 1) {
-    // Need to convert to binary and round
+    // Value less than 1 is converted to binary and rounded
     decimal = fraction(decimal, isDp)
   } else if (decimal > max) {
-    localCusses.add(cusses.Cuss1E)
+    localCusses.add(cusses.Cuss1E, decimal.toString())
     decimal = max
   } else if (!Number.isInteger(decimal)) {
-    localCusses.add(cusses.Cuss1D)
+    // Value greater than one with a fractional component is warned and truncated
+    localCusses.add(cusses.Cuss1D, decimal.toString())
     decimal = Math.floor(decimal)
   }
 
@@ -150,7 +161,7 @@ function lexOctal (
     octal *= scale
   }
 
-  // Ref 1, 13-147.
+  // Ref YUL, 13-145.
   let max: number
   if (parsed.positive === undefined) {
     max = isDp ? DP_LOGICAL_MAX : SP_LOGICAL_MAX
@@ -158,10 +169,11 @@ function lexOctal (
     max = isDp ? DP_INT_MAX : SP_INT_MAX
   }
   if (octal > max) {
-    localCusses.add(cusses.Cuss1E)
+    localCusses.add(cusses.Cuss1E, octal.toString(8))
     octal = max
   } else if (!Number.isInteger(octal)) {
-    localCusses.add(cusses.Cuss1D)
+    // Value with a fractional component is warned and truncated
+    localCusses.add(cusses.Cuss1D, octal.toString(8))
     octal = Math.floor(octal)
   }
 
@@ -332,7 +344,7 @@ function checkTruncate (mantissa: Mantissa | undefined, isOctal: boolean, localC
     whole = '1'
     fractional = ''
   } else {
-    // Ref 1, 13-143. Warn and ignore any digits beyond the 10th for decimal and 14th for octal.
+    // Ref YUL, 13-143. Warn and ignore any digits beyond the max significant.
     const maxSignificant = isOctal ? OCTAL_MAX_DIGITS : DECIMAL_MAX_DIGITS
     whole = mantissa.whole
     fractional = mantissa.fractional
@@ -384,6 +396,8 @@ function fraction (input: number, isDp: boolean): number {
   if ((result & 1) === 1) {
     const max = isDp ? DP_INT_MAX : SP_INT_MAX
     result >>= 1
+    // Be careful not to round into overflow.
+    // This can occur - see Luminary099 constant ABOUTONE.
     if (result < max - 1) {
       ++result
     }

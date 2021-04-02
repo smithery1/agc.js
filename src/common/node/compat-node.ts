@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import * as http from 'http'
+import { userInfo } from 'os'
 import * as stream from 'stream'
 import { URL as NodeURL } from 'url'
 import { Compat, InputStream, ReadResult, setCompat } from '../compat'
@@ -17,6 +18,10 @@ class NodeCompat implements Compat {
         })
       })
     }
+  }
+
+  username (): string {
+    return userInfo().username
   }
 
   log (...data: any[]): void {

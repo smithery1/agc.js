@@ -10,6 +10,7 @@ export interface InputStream {
 
 export interface Compat {
   fetch: (input: RequestInfo, init?: RequestInit) => Promise<InputStream>
+  username: () => string
   log: (...data: any[]) => void
   error: (...data: any[]) => void
   output: (...data: any[]) => void
