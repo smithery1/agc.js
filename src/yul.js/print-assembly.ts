@@ -7,7 +7,7 @@ import { LexedLine, LineType } from './lexer'
 import * as ops from './operations'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
-import { compareSymbolsEbcdic, PrinterContext } from './printer-utils'
+import { compareSymbolsEbcdic, LINE_LENGTH, PrinterContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
 import { parity } from './util'
 
@@ -74,11 +74,16 @@ export function printAssembly (printer: PrinterContext, pass2: Pass2Output): voi
 }
 
 function printHeader (printer: PrinterContext, source: string, page: number, eBank: number, sBank: number): void {
-  const pageString = page.toString().padStart(COLUMNS.Page)
   const eBankString = 'E' + eBank.toString()
   const sBankString = sBank === 0 ? '' : 'S' + sBank.toString()
-  printer.println('L', EMPTY_LINE_NUMBER, source)
-  printer.println('L', EMPTY_LINE_NUMBER, 'PAGE', pageString, '    ', eBankString, sBankString)
+  const maxSourceLength = LINE_LENGTH - 2 - EMPTY_LINE_NUMBER.length - 7
+  let sourceString = source
+  if (sourceString.length > maxSourceLength) {
+    const halfLength = Math.floor(maxSourceLength / 2) - 2
+    sourceString = source.substring(0, halfLength) + '...' + source.substring(source.length - halfLength)
+  }
+  const bankSpacing = ' '.repeat(maxSourceLength - sourceString.length - 1)
+  printer.println('L', EMPTY_LINE_NUMBER, sourceString, bankSpacing, eBankString, sBankString)
   printer.println('')
 }
 

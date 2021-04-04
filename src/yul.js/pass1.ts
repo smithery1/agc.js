@@ -5,6 +5,7 @@ import { AssembledCard, getCusses } from './assembly'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType } from './lexer'
+import * as ops from './operations'
 import * as parse from './parser'
 import { Pass1SymbolTable, Pass2SymbolTable } from './symbol-table'
 
@@ -20,6 +21,9 @@ export interface Pass1Output {
   readonly symbolTable: Pass2SymbolTable
   readonly cells: Cells
 }
+
+const EQUALS_MINUS_OP = ops.requireOperation('=MINUS')
+const EQUALS_PLUS_OP = ops.requireOperation('=PLUS')
 
 /**
  * The pass 1 assembler.
@@ -38,10 +42,12 @@ export class Pass1Assembler {
   }
 
   private readonly clericalDispatch = {
+    '=MINUS': this.onEqualsLikeCard.bind(this),
+    '=PLUS': this.onEqualsLikeCard.bind(this),
     BANK: this.onBankCard.bind(this),
     BLOCK: this.onBlockCard.bind(this),
     ERASE: this.onEraseCard.bind(this),
-    EQUALS: this.onEqualsCard.bind(this),
+    EQUALS: this.onEqualsLikeCard.bind(this),
     SETLOC: this.onSetLocCard.bind(this)
   }
 
@@ -380,14 +386,22 @@ export class Pass1Assembler {
     }
   }
 
-  private onEqualsCard (card: parse.ClericalCard, assembled: AssembledCard): void {
+  private onEqualsLikeCard (card: parse.ClericalCard, assembled: AssembledCard): void {
     if (this.locationCounter !== undefined) {
       // Required for relative declarations
       assembled.refAddress = this.locationCounter
       if (card.address === undefined) {
         this.symbolTable.assignAddress(card.location, assembled)
       } else {
-        this.symbolTable.assignField(card.location, card.address, assembled)
+        let offset: number
+        if (card.operation.operation === EQUALS_MINUS_OP) {
+          offset = -this.locationCounter
+        } else if (card.operation.operation === EQUALS_PLUS_OP) {
+          offset = this.locationCounter
+        } else {
+          offset = 0
+        }
+        this.symbolTable.assignField(card.location, card.address, offset, assembled)
       }
     }
   }

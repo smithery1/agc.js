@@ -36,7 +36,7 @@ export const UNSIGNED_EXPR = /^\d+D?$/
 
 const OCTAL_INTEGER_EXPR = /^[0-7]+/
 const ADDRESS_FIELD_EXPR = /^([^\s]+)(?:\s+([+-]\d+D?))?$/
-const ERASE_FIELD_EXPR = /^(\d+D?)\s+-\s+(\d+D?)$/
+const RANGE_FIELD_EXPR = /^(\d+D?)\s+-\s+(\d+D?)$/
 const INDEXED_FIELD_EXPR = /^([^\s,]+)(?:\s+([+-]\d+D?))?(?:,([12]))?$/
 
 const MAX_15_BITS = 0x7FFF
@@ -45,21 +45,21 @@ const MAX_15_BITS = 0x7FFF
  * Attempts to parse the specified address field.
  *
  * An interpretive indexed field must end with ",[12]".
- * An ERASE field may contain a range of unsigned numbers "[0-9]D? - [0-9]D?".
+ * An ERASE or MEMORY field may contain a range of unsigned numbers "[0-9]D? - [0-9]D?".
  *
  * @param field the address field
  * @param interpretiveIndex whether an interpretive index is allowed
- * @param isErase whether the field is an operand of an ERASE instruction
+ * @param rangeAllowed whether the field may contain a range expression
  * @returns the parsed field or a cuss
  */
 export function parse (
-  field: string, interpretiveIndex: ops.Necessity, isErase: boolean): AddressField | cusses.Cuss {
+  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean): AddressField | cusses.Cuss {
   const match = interpretiveIndex !== ops.Necessity.Never
     ? INDEXED_FIELD_EXPR.exec(field)
     : ADDRESS_FIELD_EXPR.exec(field)
   if (match === null || match[1] === undefined) {
     // If ERASE field does not match standard address form, check for a range.
-    return isErase ? parseErase(field) : cusses.Cuss3D
+    return rangeAllowed ? parseErase(field) : cusses.Cuss3D
   }
 
   let offset: number | undefined
@@ -104,7 +104,7 @@ export function parse (
   return { value: match[1], offset, indexRegister }
 
   function parseErase (field: string): AddressField | cusses.Cuss {
-    const rangeMatch = ERASE_FIELD_EXPR.exec(field)
+    const rangeMatch = RANGE_FIELD_EXPR.exec(field)
     if (rangeMatch !== null) {
       const value1 = parseUnsigned(rangeMatch[1], MAX_15_BITS)
       if (cusses.isCuss(value1)) {

@@ -18,6 +18,7 @@ interface UnresolvedEntry {
   readonly definition: AssembledCard
   readonly references: AssembledCard[]
   readonly value: number | field.AddressField
+  readonly offset: number
   health?: Health
 }
 
@@ -107,9 +108,9 @@ export class Pass1SymbolTable implements SymbolTable {
       let entry: UnresolvedEntry
       this.requireUnassigned(location.symbol, definition)
       if (definition.refAddress === undefined) {
-        entry = { definition, references: [], value: ERROR_WORD, health: Health.BadlyDefined }
+        entry = { definition, references: [], value: ERROR_WORD, offset: 0, health: Health.BadlyDefined }
       } else {
-        entry = { definition, references: [], value: definition.refAddress }
+        entry = { definition, references: [], value: definition.refAddress, offset: 0 }
       }
       this.table.set(location.symbol, entry)
     }
@@ -123,13 +124,17 @@ export class Pass1SymbolTable implements SymbolTable {
    *
    * @param location the field with the symbol
    * @param address the address field of the definition card
+   * @param offset an offset to apply to the value when calculating it, used for =MINUS and =PLUS
    * @param definition the card defining the symbol
    */
   assignField (
-    location: LocationField | undefined, address: field.AddressField | undefined, definition: AssembledCard): void {
+    location: LocationField | undefined,
+    address: field.AddressField | undefined,
+    offset: number,
+    definition: AssembledCard): void {
     if (location !== undefined && address !== undefined) {
       this.requireUnassigned(location.symbol, definition)
-      this.table.set(location.symbol, { definition, references: [], value: address })
+      this.table.set(location.symbol, { definition, references: [], value: address, offset })
     }
   }
 
@@ -182,11 +187,15 @@ export class Pass1SymbolTable implements SymbolTable {
   private resolveEntry (
     symbol: string, entry: UnresolvedEntry, requester?: AssembledCard, visited?: Set<string>): number | undefined {
     if (typeof entry.value === 'number') {
-      return entry.value
+      return entry.value + entry.offset
     } else {
       const set = visited === undefined ? new Set<string>() : visited
       set.add(symbol)
-      return this.resolveField(entry.value, requester, entry.definition, set)
+      let result = this.resolveField(entry.value, requester, entry.definition, set)
+      if (result !== undefined) {
+        result += entry.offset
+      }
+      return result
     }
   }
 

@@ -22,7 +22,7 @@ export function compareSymbolsEbcdic (str1: string, str2: string): number {
   }
 }
 
-const LINE_LENGTH = 130
+export const LINE_LENGTH = 130
 const PAGE_BREAK = '-'.repeat(LINE_LENGTH)
 const MONTHS = [
   'JANUARY', 'FEBRAURY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
@@ -34,8 +34,8 @@ export class PrinterContext {
   private pageDirty = false
   private page = 1
 
-  constructor (revision: string, program: string, user: string) {
-    const header = `YUL.JS:  ASSEMBLE REVISION ${revision.toUpperCase()} OF AGC PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()}`
+  constructor (revision: string, program: string, user: string, part: string) {
+    const header = `YUL.JS:  ASSEMBLE REVISION ${revision.toUpperCase()} OF AGC PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()} ${part}`
     const spacing = ' '.repeat(Math.max(0, 78 - header.length))
     this.header = header + spacing
   }

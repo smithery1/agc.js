@@ -48,10 +48,12 @@ export class Pass2Assembler {
   }
 
   private readonly clericalDispatch = {
+    '=MINUS': this.onEqualsLike.bind(this),
+    '=PLUS': this.onEqualsLike.bind(this),
     BNKSUM: this.onBnkSum.bind(this),
     COUNT: this.onCount.bind(this),
     'EBANK=': this.onEBankEquals.bind(this),
-    EQUALS: this.onEquals.bind(this),
+    EQUALS: this.onEqualsLike.bind(this),
     'SBANK=': this.onSBankEquals.bind(this)
   }
 
@@ -82,7 +84,7 @@ export class Pass2Assembler {
   private eBank: number
   private oneShotEBank: number | undefined
   private sBank: number
-  private count: AssembledCard
+  private count: AssembledCard | undefined
 
   /**
    * Runs this assembler on the specified pass 1 output.
@@ -113,6 +115,9 @@ export class Pass2Assembler {
         } else {
           this.sBank = card.sBank
         }
+      } else {
+        card.eBank = this.eBank
+        card.sBank = this.sBank
       }
 
       this.addCussCounts(card.cusses)
@@ -143,7 +148,9 @@ export class Pass2Assembler {
     const value = compliment ? word ^ COMPLEMENT_MASK : word
     this.output.cells.assignValue(this.locationCounter, value, assembled)
     ++this.locationCounter
-    this.count.count++
+    if (this.count !== undefined) {
+      ++this.count.count
+    }
   }
 
   private resolve (address: field.AddressField | undefined, assembled: AssembledCard): field.TrueAddress | undefined {
@@ -876,11 +883,12 @@ export class Pass2Assembler {
     this.sBank = bankAndAddress?.bank.sBank ?? 0
   }
 
-  private onEquals (card: parse.ClericalCard, assembled: AssembledCard): void {
-    if (assembled.refAddress === undefined) {
-      const resolved = this.resolve(card.address, assembled)
+  private onEqualsLike (card: parse.ClericalCard, assembled: AssembledCard): void {
+    // Required and verified by parser
+    if (card.location !== undefined) {
+      const resolved = this.output.symbolTable.resolve(card.location.symbol, assembled)
       if (resolved !== undefined) {
-        assembled.refAddress = resolved.address + resolved.offset
+        assembled.refAddress = resolved
       }
     }
   }

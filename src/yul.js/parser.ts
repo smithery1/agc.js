@@ -210,6 +210,7 @@ const IAW_OP = ops.requireOperation('P')
 const INDEX_OP = ops.requireOperation('INDEX')
 const ERASE_OP = ops.requireOperation('ERASE')
 const EXTEND_OP = ops.requireOperation('EXTEND')
+const MEMORY_OP = ops.requireOperation('MEMORY')
 const STADR_OP = ops.requireOperation('STADR')
 const STORE_OP = ops.requireOperation('STORE')
 
@@ -365,7 +366,7 @@ export class Parser {
       }
     }
 
-    if (!this.verifyOperand(input, operandNecessity)) {
+    if (!this.verifyAddressField(input, operandNecessity)) {
       return { lexedLine: input.lexedLine }
     }
 
@@ -439,14 +440,15 @@ export class Parser {
     }
 
     if (!this.verifyLocation(input, input.parsedOp.op.locationField)
-      || !this.verifyOperand(input, input.parsedOp.op.addressField)) {
+      || !this.verifyAddressField(input, input.parsedOp.op.addressField)) {
       return { lexedLine: input.lexedLine }
     }
 
     let parsed: field.AddressField | cusses.Cuss | undefined
-    const operand = input.lexedLine.field3
-    if (operand !== undefined) {
-      parsed = field.parse(operand, ops.Necessity.Never, input.parsedOp.op === ERASE_OP)
+    const addressField = input.lexedLine.field3
+    if (addressField !== undefined) {
+      const rangeAllowed = input.parsedOp.op === ERASE_OP || input.parsedOp.op === MEMORY_OP
+      parsed = field.parse(addressField, ops.Necessity.Never, rangeAllowed)
     }
     if (cusses.isCuss(parsed)) {
       this.cardCusses.add(parsed)
@@ -473,7 +475,7 @@ export class Parser {
       this.cardCusses.add(cusses.Cuss01)
     }
 
-    if (!this.verifyOperand(input, ops.Necessity.Required)) {
+    if (!this.verifyAddressField(input, ops.Necessity.Required)) {
       return { lexedLine: input.lexedLine }
     }
 
@@ -511,7 +513,7 @@ export class Parser {
       this.cardCusses.add(cusses.Cuss40)
     }
 
-    if (!this.verifyOperand(input, input.parsedOp.op.addressField)) {
+    if (!this.verifyAddressField(input, input.parsedOp.op.addressField)) {
       return { lexedLine: input.lexedLine }
     }
 
@@ -711,7 +713,7 @@ export class Parser {
     return true
   }
 
-  private verifyOperand (input: LineOp, necessity: ops.Necessity): boolean {
+  private verifyAddressField (input: LineOp, necessity: ops.Necessity): boolean {
     if (necessity === ops.Necessity.Never) {
       if (input.lexedLine.field3 !== undefined) {
         this.cardCusses.add(cusses.Cuss2B)

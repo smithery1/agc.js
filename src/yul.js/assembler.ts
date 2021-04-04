@@ -3,7 +3,7 @@ import { isCussInstance } from './cusses'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
 import { printAssembly, printCounts, printCuss } from './print-assembly'
-import { printMemorySummary, printOccupied, printOctalListing, printParagraphs } from './print-cells'
+import { printMemorySummary, printOccupied, printOctalListing, printOctalListingCompact, printParagraphs } from './print-cells'
 import { printSymbolTable } from './print-symbol-table'
 import { PrinterContext } from './printer-utils'
 
@@ -66,7 +66,7 @@ export default class Assembler {
         return false
       }
       const pass2Result = this.pass2.assemble(pass1Result)
-      this.printListing(pass2Result)
+      this.printListing(mainUrl, pass2Result)
       return pass2Result.fatalCussCount === 0
     } catch (error) {
       compat.log(error.stack)
@@ -74,9 +74,10 @@ export default class Assembler {
     }
   }
 
-  private printListing (pass2: Pass2Output): void {
+  private printListing (mainUrl: string, pass2: Pass2Output): void {
+    const program = getProgram(mainUrl)
     const user = compat.username()
-    const printer = new PrinterContext('001', 'LMY99', user)
+    const printer = new PrinterContext('001', program, user, '0000000-000')
 
     printer.printHeader()
     printAssembly(printer, pass2)
@@ -94,6 +95,19 @@ export default class Assembler {
     printOccupied(printer, pass2.cells)
     printer.printPageBreak()
     this.printResults(printer, pass2)
+    printOctalListingCompact(printer, pass2.cells)
+
+    function getProgram (mainUrl: string): string {
+      const url = new URL(mainUrl)
+      // Wait for ES2022, punt on weird URLs for now
+      // const pathname = url.pathname.replaceAll(/\/+/g, '/')
+      const pathname = url.pathname
+      const programMatch = pathname.match(/.*\/([^/]+\/[^/]+)\.agc/)
+      if (programMatch === null || programMatch[1] === null) {
+        return pathname
+      }
+      return programMatch[1]
+    }
   }
 
   // Not quite exact, but in the spirit of Ref https://www.ibiblio.org/apollo/YUL/01%20-%20Intro/yul-0013.jpg

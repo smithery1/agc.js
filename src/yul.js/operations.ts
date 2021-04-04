@@ -429,6 +429,8 @@ function alias (alias: string, original: string): void {
 //
 // Note erase can be 0 or 1 words, depending on the address field.
 // This is handled in the assembler, but the parser needs it to be non-zero to perform other checks.
+addClerical('=MINUS', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
+addClerical('=PLUS', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
 addClerical('ERASE', 1, Necessity.Optional, Necessity.Optional, Necessity.Never, Necessity.Never)
 addClerical('BANK', 0, Necessity.Never, Necessity.Optional, Necessity.Never, Necessity.Never)
 addClerical('BLOCK', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
@@ -437,6 +439,7 @@ addClerical('COUNT', 0, Necessity.Never, Necessity.Required, Necessity.Never, Ne
 addClerical('EBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Required)
 addClerical('EQUALS', 0, Necessity.Required, Necessity.Optional, Necessity.Never, Necessity.Never)
 alias('=', 'EQUALS')
+addClerical('MEMORY', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
 addClerical('SBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
 addClerical('SETLOC', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
 alias('LOC', 'SETLOC')
