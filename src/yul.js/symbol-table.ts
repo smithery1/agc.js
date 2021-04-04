@@ -261,6 +261,24 @@ export class Pass2SymbolTable implements SymbolTable {
   }
 
   /**
+   * Attempts to resolve the specified symbol.
+   * Behaves like resolve but does not add a reference count to the symbol.
+   *
+   * @param symbol the symbol to resolve
+   * @param requester the card using the symbol in its address field
+   * @returns the resolved value
+   */
+  resolveNoReference (symbol: string, requester: AssembledCard): number | undefined {
+    const entry = this.table.get(symbol)
+    if (entry === undefined) {
+      getCusses(requester).add(cusses.Cuss2C, 'No definition for ' + symbol)
+      return undefined
+    }
+
+    return entry.value
+  }
+
+  /**
    * Provides access to the raw cell data for printing purposes.
    * See print-symbol-table.ts.
    */

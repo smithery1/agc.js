@@ -233,6 +233,16 @@ export function isErasableBank (bank: number): boolean {
 }
 
 /**
+ * Returns true iff the specified bank number corresponds to a fixed bank, i.e. is in the range [0, 43(8)].
+ *
+ * @param bank the bank number to examine
+ * @returns true iff the specified bank number corresponds to a fixed bank
+ */
+export function isFixedBank (bank: number): boolean {
+  return bank >= 0 && bank <= 35
+}
+
+/**
  * Returns the FBANK number and SBANK number if applicable for the specified fixed bank number.
  * If the bank number is outside the range [0, 43(8)], undefined is returned.
  *

@@ -266,6 +266,9 @@ export class Pass1Assembler {
     let bankNumber: number
     let sBank: number | undefined
 
+    // Ref SYM, III-8 makes no mention of this and it makes little if any practical difference with the mission source
+    // code, but empirically it seems than only BANK without an operand changes the SBANK setting.
+
     if (card.address === undefined) {
       const fixed = addressing.fixedBankNumber(this.locationCounter ?? -1)
       if (fixed === undefined) {

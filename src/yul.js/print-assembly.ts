@@ -44,8 +44,6 @@ export function printCuss (instance: CussInstance): void {
 export function printAssembly (printer: PrinterContext, pass2: Pass2Output): void {
   let source = ''
   let page = 0
-  let eBank = 0
-  let sBank = 0
 
   pass2.cards.forEach(card => {
     if (source !== card.lexedLine.sourceLine.source || page !== card.lexedLine.sourceLine.page) {
@@ -53,7 +51,7 @@ export function printAssembly (printer: PrinterContext, pass2: Pass2Output): voi
       const newSource = source !== card.lexedLine.sourceLine.source
       source = card.lexedLine.sourceLine.source
       page = card.lexedLine.sourceLine.page
-      printHeader(printer, source, page, eBank, sBank)
+      printHeader(printer, source, card.eBank, card.sBank)
       if (newSource) {
         source = card.lexedLine.sourceLine.source
       }
@@ -68,12 +66,10 @@ export function printAssembly (printer: PrinterContext, pass2: Pass2Output): voi
       printInstructionCard(printer, card, pass2.cells, ' ')
     }
     printCusses(card.cusses)
-    eBank = card.eBank
-    sBank = card.sBank
   })
 }
 
-function printHeader (printer: PrinterContext, source: string, page: number, eBank: number, sBank: number): void {
+function printHeader (printer: PrinterContext, source: string, eBank: number, sBank: number): void {
   const eBankString = 'E' + eBank.toString()
   const sBankString = sBank === 0 ? '' : 'S' + sBank.toString()
   const maxSourceLength = LINE_LENGTH - 2 - EMPTY_LINE_NUMBER.length - 7
@@ -294,6 +290,7 @@ function countEntryString (context: CountContext): string | undefined {
 }
 
 export function printCounts (printer: PrinterContext, pass2: Pass2Output): void {
+  // Ref SYM, III-21
   const map = new Map<string, CountContext>()
   let currentCount: CountContext = createCountContext('')
   map.set(currentCount.name, currentCount)
@@ -311,12 +308,17 @@ export function printCounts (printer: PrinterContext, pass2: Pass2Output): void 
         currentCount = lookup
       }
       ++currentCount.refs
+      currentCount.lastCount = 0
       currentCount.lastPageStart = page
       currentCount.lastPageEnd = page
     } else {
-      currentCount.lastCount += card.extent
-      currentCount.totalCount += card.extent
-      currentCount.cumCount += card.extent
+      if (card.extent > 0
+        && card.refAddress !== undefined
+        && addressing.isFixed(addressing.memoryArea(card.refAddress))) {
+        currentCount.lastCount += card.extent
+        currentCount.totalCount += card.extent
+        currentCount.cumCount += card.extent
+      }
       currentCount.lastPageEnd = page
     }
   })

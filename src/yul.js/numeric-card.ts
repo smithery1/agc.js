@@ -362,31 +362,34 @@ function checkTruncate (mantissa: Mantissa | undefined, isOctal: boolean, localC
 }
 
 function base10Scaling (exp: number, scaling: number): { numerator: number, denominator: number } {
-  if (exp > 0 && scaling > 0) {
-    const numerator = Math.pow(10, exp) * Math.pow(2, scaling)
-    return { numerator, denominator: 1 }
-  } else if (exp < 0 && scaling < 0) {
-    const denominator = Math.pow(10, -exp) * Math.pow(2, -scaling)
-    return { numerator: 1, denominator }
+  let numerator = 1
+  let denominator = 1
+
+  if (exp === 0) {
+    if (scaling < 0) {
+      denominator = Math.pow(2, -scaling)
+    } else if (scaling !== 0) {
+      numerator = Math.pow(2, scaling)
+    }
   } else if (exp > 0) {
-    if (exp > -scaling) {
-      const numerator = Math.pow(5, -scaling) * Math.pow(10, exp + scaling)
-      return { numerator, denominator: 1 }
+    if (scaling >= 0) {
+      numerator = Math.pow(10, exp) * Math.pow(2, scaling)
+    } else if (exp >= -scaling) {
+      numerator = Math.pow(5, -scaling) * Math.pow(2, exp + scaling)
     } else {
-      const numerator = Math.pow(5, exp)
-      const denominator = Math.pow(2, -scaling - exp)
-      return { numerator, denominator }
+      numerator = Math.pow(5, exp)
+      denominator = Math.pow(2, -scaling - exp)
     }
+  } else if (scaling <= 0) {
+    denominator = Math.pow(10, -exp) * Math.pow(2, -scaling)
+  } else if (-exp >= scaling) {
+    denominator = Math.pow(5, -exp) * Math.pow(2, -exp - scaling)
   } else {
-    if (-exp > scaling) {
-      const denominator = Math.pow(5, scaling) * Math.pow(10, -exp - scaling)
-      return { numerator: 1, denominator }
-    } else {
-      const numerator = Math.pow(2, scaling + exp)
-      const denominator = Math.pow(5, -exp)
-      return { numerator, denominator }
-    }
+    numerator = Math.pow(2, scaling + exp)
+    denominator = Math.pow(5, -exp)
   }
+
+  return { numerator, denominator }
 }
 
 function fraction (input: number, isDp: boolean): number {

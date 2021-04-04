@@ -84,6 +84,7 @@ export class Pass2Assembler {
   private eBank: number
   private oneShotEBank: number | undefined
   private sBank: number
+  private oneShotSBank: number | undefined
   private count: AssembledCard | undefined
 
   /**
@@ -105,7 +106,13 @@ export class Pass2Assembler {
     this.eBank = 0
     this.sBank = 0
 
+    let prevSource: string
+
     this.output.cards.forEach((card) => {
+      if (card.lexedLine.sourceLine.source !== prevSource) {
+        this.eBank = 0
+        prevSource = card.lexedLine.sourceLine.source
+      }
       if (card.card !== undefined && card.refAddress !== undefined) {
         this.locationCounter = card.refAddress
         this.cardDispatch[card.card.type](card.card, card)
@@ -199,15 +206,19 @@ export class Pass2Assembler {
     }
   }
 
-  private updateEBank (): void {
+  private updateBanks (): void {
     if (this.oneShotEBank !== undefined) {
       this.eBank = this.oneShotEBank
       this.oneShotEBank = undefined
     }
+    if (this.oneShotSBank !== undefined) {
+      this.sBank = this.oneShotSBank
+      this.oneShotSBank = undefined
+    }
   }
 
   private onBasicInstructionCard (card: parse.BasicInstructionCard, assembled: AssembledCard): void {
-    this.updateEBank()
+    this.updateBanks()
 
     if (card.operation.operation.addressRange === BasicAddressRange.IOChannel) {
       this.onBasicIOChannelCard(card, assembled)
@@ -295,7 +306,7 @@ export class Pass2Assembler {
   }
 
   private onInterpretiveInstructionCard (card: parse.InterpretiveInstructionCard, assembled: AssembledCard): void {
-    this.updateEBank()
+    this.updateBanks()
     this.indexMode = false
 
     if (card.lhs?.operation.subType === ops.InterpretiveType.Store) {
@@ -377,7 +388,7 @@ export class Pass2Assembler {
       this.addressDispatch[symbol](card, resolved, assembled)
     }
 
-    this.updateEBank()
+    this.updateBanks()
   }
 
   private onGenAdr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
@@ -450,10 +461,11 @@ export class Pass2Assembler {
         getCusses(assembled).add(cusses.Cuss58)
         return
       }
-      // Ref BTM, 1-53: This is supposed to behave like BBCON, but BBCON does not allow fixed-fixed and this needs to.
       const fBank = bankAndAddress.bank.fBank ?? -1
-      low = this.bbconVariableFixed(fBank, bankAndAddress.bank.sBank ?? this.sBank, this.oneShotEBank)
+      const sBank = this.oneShotSBank === undefined ? bankAndAddress.bank.sBank : this.oneShotSBank
+      low = this.bbconVariableFixed(fBank, sBank, this.oneShotEBank)
       this.oneShotEBank = undefined
+      this.oneShotSBank = undefined
     }
 
     this.setCell(high, 0, card.operation.complemented, assembled)
@@ -485,20 +497,22 @@ export class Pass2Assembler {
 
     // Indexed is BBCON*
     const address = card.operation.indexed ? this.locationCounter : resolved.address
+
+    // Ref BTM, 1-53 about BBCON: "The address value must be a location in fixed memory (not fixed-fixed)..."
+    // However, Comanche055 has a couple of BBCON operations with fixed-fixed locations, and 2CADR, which is supposed to
+    // behave like BBCON, also references fixed-fixed locations at various points in the code.
+    // So allow fixed-fixed locations.
     let bank = addressing.fixedBankNumberToBank(address)
     if (bank === undefined) {
-      if (addressing.memoryArea(address) !== addressing.MemoryArea.Variable_Fixed) {
-        getCusses(assembled).add(cusses.Cuss3F)
-        return
-      }
-
       const bankAndAddress = addressing.asBankAndAddress(address)
-      bank = { fBank: bankAndAddress?.bank.fBank ?? 0, sBank: bankAndAddress?.bank.sBank }
+      const sBank = this.oneShotSBank === undefined ? bankAndAddress?.bank.sBank : this.oneShotSBank
+      bank = { fBank: bankAndAddress?.bank.fBank ?? 0, sBank }
     }
 
     const value = this.bbconVariableFixed(bank.fBank, bank.sBank, this.oneShotEBank)
     this.setCell(value, resolved.offset, card.operation.complemented, assembled)
     this.oneShotEBank = undefined
+    this.oneShotSBank = undefined
   }
 
   private bbconVariableFixed (fBank: number, sBank: number | undefined, eBank: number): number {
@@ -696,7 +710,7 @@ export class Pass2Assembler {
 
   private onNumericConstantCard (card: parse.NumericConstantCard, assembled: AssembledCard): void {
     if (card.operation.operation.words > 0) {
-      this.updateEBank()
+      this.updateBanks()
       this.indexMode = false
     }
 
@@ -732,7 +746,7 @@ export class Pass2Assembler {
 
   private onClericalCard (card: parse.ClericalCard, assembled: AssembledCard): void {
     if (card.operation.operation.words > 0) {
-      this.updateEBank()
+      this.updateBanks()
       this.indexMode = false
     }
 
@@ -878,15 +892,29 @@ export class Pass2Assembler {
       return
     }
     const address = resolved.address
-    const bankAndAddress = addressing.asBankAndAddress(address)
+    let bank: number
+
+    if (addressing.isFixedBank(address)) {
+      bank = address
+    } else {
+      const bankAndAddress = addressing.asBankAndAddress(address)
+      if (bankAndAddress?.bank.sBank === undefined) {
+        getCusses(assembled).add(cusses.Cuss3F)
+        return
+      }
+      bank = bankAndAddress.bank.sBank
+    }
+
     assembled.refAddress = address
-    this.sBank = bankAndAddress?.bank.sBank ?? 0
+    this.oneShotSBank = bank
   }
 
   private onEqualsLike (card: parse.ClericalCard, assembled: AssembledCard): void {
     // Required and verified by parser
     if (card.location !== undefined) {
-      const resolved = this.output.symbolTable.resolve(card.location.symbol, assembled)
+      // For EQUALS, the location symbol resolves to the address field value.
+      // For =MINUS and =PLUS, it resolves to a combination of the location counter and address field value.
+      const resolved = this.output.symbolTable.resolveNoReference(card.location.symbol, assembled)
       if (resolved !== undefined) {
         assembled.refAddress = resolved
       }

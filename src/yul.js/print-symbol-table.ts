@@ -7,6 +7,8 @@ import { printTable, TableData } from './table-printer'
 
 const EQUALS_OP = ops.requireOperation('EQUALS')
 const ERASE_OP = ops.requireOperation('ERASE')
+const MINUS_ERASE_OP = ops.requireOperation('=MINUS')
+const PLUS_ERASE_OP = ops.requireOperation('=PLUS')
 
 export function printSymbolTable (printer: PrinterContext, symbolTable: Pass2SymbolTable): void {
   const table = symbolTable.getTable()
@@ -43,15 +45,20 @@ function valueSort (e1: [string, SymbolEntry], e2: [string, SymbolEntry]): numbe
   return value1 < value2 ? -1 : 1
 }
 
+function isEqualsCard (card: any): boolean {
+  return parse.isClerical(card)
+    && (card.operation.operation === EQUALS_OP
+      || card.operation.operation === MINUS_ERASE_OP
+      || card.operation.operation === PLUS_ERASE_OP)
+}
+
+function isEraseCard (card: any): boolean {
+  return parse.isClerical(card) && card.operation.operation === ERASE_OP
+}
+
 function healthString (entry: SymbolEntry): string {
   if (entry.health === undefined) {
-    const card = entry.definition.card
-    if (parse.isClerical(card)) {
-      if (card.operation.operation === EQUALS_OP) {
-        return '='
-      }
-    }
-    return ' '
+    return isEqualsCard(entry.definition.card) ? '=' : ' '
   } else {
     return entry.health
   }
@@ -66,9 +73,9 @@ const ALL_COLUMNS = {
   Value: 7,
   Health: 2,
   Page: 4,
-  Refs: 3,
-  AllRefs: 4 + 1 + 3 + 1 + 4 + 1 + 4,
-  Entry: 8 + 1 + 7 + 1 + 2 + 1 + 4 + 1 + 3 + 1 + 4 + 1 + 4
+  Refs: 4,
+  AllRefs: 4 + 1 + 4 + 1 + 4 + 1 + 4,
+  Entry: 8 + 1 + 7 + 1 + 2 + 1 + 4 + 1 + 4 + 1 + 4 + 1 + 4
 }
 
 const ALL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
@@ -81,7 +88,7 @@ const ALL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
     'SYMBOL'.padEnd(ALL_COLUMNS.Symbol)
     + ' ' + '  DEF'.padEnd(ALL_COLUMNS.Value)
     + ' ' + 'H'.padStart(ALL_COLUMNS.Health)
-    + ' ' + '    REFERENCES'.padEnd(ALL_COLUMNS.AllRefs),
+    + ' ' + '     REFERENCES'.padEnd(ALL_COLUMNS.AllRefs),
   entryString: allEntryString,
   separator: symbolSeparator
 }
@@ -176,10 +183,9 @@ const XREF_TABLE_DATA: TableData<[string, SymbolEntry]> = {
 }
 
 function xrefEntryString (data: [string, SymbolEntry]): string | undefined {
-  const symbol = data[0]
   const entry = data[1]
-  const card = entry.definition.card
-  if (parse.isClerical(card) && (card.operation.operation === EQUALS_OP || card.operation.operation === ERASE_OP)) {
+  if (isEqualsCard(entry.definition.card) || isEraseCard(entry.definition.card)) {
+    const symbol = data[0]
     const def = entry.value
     const page = entry.definition.lexedLine.sourceLine.page
     return addressing.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
@@ -192,8 +198,7 @@ function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>)
   let normal = 0
   let equals = 0
   table.forEach(entry => {
-    const card = entry.definition.card
-    if (parse.isClerical(card) && (card.operation.operation === EQUALS_OP)) {
+    if (isEqualsCard(entry.definition.card)) {
       ++equals
     } else {
       ++normal
