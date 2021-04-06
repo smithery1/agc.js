@@ -242,14 +242,17 @@ export class Parser {
   }
 
   private readonly interpretiveOperands: OperandStackElement[]
+  private page: number
   private isExtended: boolean
   private isStadr: boolean
   private cardCusses: cusses.Cusses
 
   constructor () {
     this.interpretiveOperands = []
+    this.page = 0
     this.isExtended = false
     this.isStadr = false
+    this.cardCusses = new cusses.Cusses()
   }
 
   /**
@@ -259,18 +262,25 @@ export class Parser {
    * @param stream the input source
    */
   async * parse (source: string, stream: InputStream): AsyncGenerator<ParsedCard> {
-    this.cardCusses = new cusses.Cusses()
-
     for await (const lexed of lex(source, stream)) {
+      let localCusses: cusses.Cusses | undefined
+
+      if (lexed.sourceLine.page !== 0 && lexed.sourceLine.page !== this.page) {
+        if (lexed.sourceLine.page !== this.page + 1) {
+          this.cardCusses.add(cusses.Cuss27, `Expected page ${this.page} but got ${lexed.sourceLine.page}`)
+          localCusses = this.cardCusses
+        }
+        this.page = lexed.sourceLine.page
+      }
       if (lexed.type === LineType.Insertion) {
-        yield { lexedLine: lexed, card: { file: lexed.field1 } }
+        yield { lexedLine: lexed, card: { file: lexed.field1 }, cusses: localCusses }
       } else if (lexed.type === LineType.Remark) {
-        yield { lexedLine: lexed, card: { fullLine: lexed.field1 === undefined } }
+        yield { lexedLine: lexed, card: { fullLine: lexed.field1 === undefined }, cusses: localCusses }
       } else if (lexed.type === LineType.Pagination) {
-        yield { lexedLine: lexed }
+        yield { lexedLine: lexed, cusses: localCusses }
       } else {
         const parsedLine = this.parseCard(lexed)
-        const localCusses = this.cardCusses.empty() ? undefined : this.cardCusses
+        localCusses = this.cardCusses.empty() ? undefined : this.cardCusses
         if (localCusses !== undefined) {
           this.cardCusses = new cusses.Cusses()
         }

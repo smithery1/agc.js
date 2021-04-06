@@ -21,7 +21,8 @@ const MEMORY_SUMMARY_TABLE_DATA: TableData<string[]> = {
   columnWidth: 60,
   columnSeparator: 4,
   rowsPerPage: 45,
-  header: 'MEMORY TYPE & AVAILABILITY DISPLAY',
+  reflowLastPage: false,
+  pageHeader: ['MEMORY TYPE & AVAILABILITY DISPLAY'],
   entryString: (entry: string[]) => entry.join(' ').padEnd(60),
   separator: () => false
 }
@@ -29,7 +30,7 @@ const MEMORY_SUMMARY_TABLE_DATA: TableData<string[]> = {
 export function printMemorySummary (printer: PrinterContext, container: Cells): void {
   const cells = container.getCells()
 
-  printTable(printer, entries(), MEMORY_SUMMARY_TABLE_DATA)
+  printTable(printer, MEMORY_SUMMARY_TABLE_DATA, entries())
 
   function * entries (): Generator<string[]> {
     yield handle(addressing.TRUE_RANGE_HARDWARE.min, addressing.TRUE_RANGE_SPECIAL.max, MEM_SPECIAL)
@@ -42,7 +43,10 @@ export function printMemorySummary (printer: PrinterContext, container: Cells): 
     yield ['']
     yield * handleRange(addressing.TRUE_RANGE_VARIABLE_FIXED_1, MEM_SWITCHABLE + ' ' + MEM_FIXED)
     yield ['']
-    yield handle(addressing.TRUE_RANGE_UNALLOCATED.min, addressing.TRUE_RANGE_UNALLOCATED.max, MEM_SPECIAL)
+    // Perhaps have addressing able to express this range along with other high ranges referenced on the actual GAP
+    // version of this page?
+    // They're not used anywhere else however.
+    yield ['02,2000', ' TO ', '03,3777', '  ', MEM_SPECIAL]
     yield ['']
     yield * handleRange(addressing.TRUE_RANGE_VARIABLE_FIXED_2, MEM_SWITCHABLE + ' ' + MEM_FIXED)
 
@@ -314,7 +318,7 @@ export function printOccupied (printer: PrinterContext, container: Cells): void 
     lineCount: 0
   }
 
-  printTable(printer, entries(), OCCUPIED_TABLE_DATA)
+  printTable(printer, OCCUPIED_TABLE_DATA, entries())
 
   function * entries (): Generator<[number, OccupiedContext]> {
     for (let i = 0; i < cells.length; i++) {

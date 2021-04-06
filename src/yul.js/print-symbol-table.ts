@@ -13,13 +13,13 @@ const PLUS_ERASE_OP = ops.requireOperation('=PLUS')
 export function printSymbolTable (printer: PrinterContext, symbolTable: Pass2SymbolTable): void {
   const table = symbolTable.getTable()
   const symbolSortedTable = [...table.entries()].sort(ebcdicSort)
-  printTable(printer, symbolSortedTable.values(), ALL_TABLE_DATA)
+  printTable(printer, ALL_TABLE_DATA, symbolSortedTable.values())
   printer.printPageBreak()
   // TODO: Unassigned data
-  printTable(printer, symbolSortedTable.values(), UNREF_TABLE_DATA)
+  printTable(printer, UNREF_TABLE_DATA, symbolSortedTable.values())
   printer.printPageBreak()
   const valueSortedTable = [...table.entries()].sort(valueSort)
-  printTable(printer, valueSortedTable.values(), XREF_TABLE_DATA)
+  printTable(printer, XREF_TABLE_DATA, valueSortedTable.values())
   printer.printPageBreak()
   printSummary(printer, table)
   printer.printPageBreak()
@@ -82,8 +82,15 @@ const ALL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   columns: 3,
   columnWidth: ALL_COLUMNS.Entry,
   rowsPerPage: 45,
-  header:
-    'SYMBOL TABLE LISTING, INCLUDING DEFINITION, HEALTH, PAGE OF DEF, # OF REFS, PAGE OF FIRST REF, PAGE OF LAST REF.',
+  pageHeader: [
+    'SYMBOL TABLE LISTING, INCLUDING DEFINITION, HEALTH, PAGE OF DEF, # OF REFS, PAGE OF FIRST REF, PAGE OF LAST REF.'
+  ],
+  pageFooter: [
+    'HEALTH KEY: NORMALLY DEFINED UNLESS FLAGGED AS FOLLOWS:',
+    '',
+    'UN UNDEFINED         = DEFINED BY EQUALS            J DEFINED BY JOKER OR ERASE ANYWHERE     MD MULTIPLY DEFINED',
+    'BD BADLY DEFINED     CD DEFINITION ASSOCIATED WITH CONFLICT             XX MISCELLANEOUS TROUBLE'
+  ],
   tableHeader:
     'SYMBOL'.padEnd(ALL_COLUMNS.Symbol)
     + ' ' + '  DEF'.padEnd(ALL_COLUMNS.Value)
@@ -138,7 +145,7 @@ const UNREF_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   columnWidth: UNREF_COLUMNS.Entry,
   columnSeparator: UNREF_COLUMNS.Padding,
   rowsPerPage: 45,
-  header: 'UNREFERENCED SYMBOL LISTING, INCLUDING DEFINITION, HEALTH, & PAGE OF DEFINITION.',
+  pageHeader: ['UNREFERENCED SYMBOL LISTING, INCLUDING DEFINITION, HEALTH, & PAGE OF DEFINITION.'],
   tableHeader:
     'SYMBOL'.padEnd(UNREF_COLUMNS.Symbol)
     + ' ' + '  DEF'.padEnd(UNREF_COLUMNS.Value)
@@ -173,7 +180,7 @@ const XREF_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   columnWidth: XREF_COLUMNS.Entry,
   columnSeparator: 1,
   rowsPerPage: 45,
-  header: 'ERASABLE & EQUALS CROSS-REFERENCE TABLE SHOWING DEFINITION, PAGE OF DEFINITION, AND SYMBOL',
+  pageHeader: ['ERASABLE & EQUALS CROSS-REFERENCE TABLE SHOWING DEFINITION, PAGE OF DEFINITION, AND SYMBOL'],
   tableHeader:
   '   DEF'.padEnd(XREF_COLUMNS.Def)
     + ' ' + 'PAGE'.padEnd(XREF_COLUMNS.Page)

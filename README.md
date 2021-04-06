@@ -34,9 +34,9 @@ Step one is in progress. The assembler "yul.js" produces correct binary output f
 [1]: https://virtualagc.github.io/virtualagc/index.html
 [2]: https://github.com/virtualagc/virtualagc/tree/master/Luminary099
 [3]: https://github.com/virtualagc/virtualagc/blob/master/Luminary099/Luminary099.binsource
-[4]: https://github.com/smithery1/agc.js/tree/main/src/yul.js
+[4]: https://github.com/smithery1/agc.js/tree/main/src/yul.js/README.md
 
-## Bibliography {#bibliography}
+## Bibliography (#bibliography)
 
 B\. Savage and A. Drake, "ACCG4 Basic Training Manual", MIT Instrumentation Laboratory, Cambridge, MA, E-2052, January 1967, http://www.ibiblio.org/apollo/NARA-SW/E-2052.pdf.
 

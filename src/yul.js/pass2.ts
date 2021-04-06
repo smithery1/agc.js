@@ -520,7 +520,7 @@ export class Pass2Assembler {
   }
 
   private onP (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
-    // See YUL, 13-137
+    // Ref YUL, 13-137
     if (card.interpretive !== undefined) {
       if (card.interpretive.operand.type === ops.InterpretiveOperandType.Constant) {
         const operationType = card.interpretive.operator.operation.subType
@@ -534,7 +534,6 @@ export class Pass2Assembler {
       }
       this.onOtherInterpretiveP(card, resolved, assembled)
     } else {
-      // Check if this is an address or a constant
       const address = resolved.address
       this.setCell(address + 1, resolved.offset, false, assembled)
     }
@@ -551,6 +550,7 @@ export class Pass2Assembler {
       return
     }
     const interpretive = card.interpretive
+    // Ref SYM, VIB-50
     // Format is 000FFFFCCCCSSSS where:
     // FFFF: flagword number = floor(flag / 15)
     // CCCC: code from interpretive op
@@ -570,6 +570,7 @@ export class Pass2Assembler {
       getCusses(assembled).add(cusses.Cuss34, 'Shift must be less than 125')
     }
 
+    // Ref SYM, VIB-26
     // Format is 01000CCISSSSSSS where:
     // CC: code from interpretive op, which is (RD: rounded, direction)
     // I: 0 for negative shift, 1 for non-negative shift
@@ -591,7 +592,6 @@ export class Pass2Assembler {
     const indexableOperand = interpretive?.operand.index ?? false
 
     if (interpretive?.operand.type === ops.InterpretiveOperandType.Address) {
-      // TODO: See all VIA-9 for restrictions on addresses, etc.
       const isErasable = addressing.isErasable(addressing.memoryArea(address))
       if (isErasable) {
         word = this.translateInterpretiveErasable(interpretive.operand, address, assembled)

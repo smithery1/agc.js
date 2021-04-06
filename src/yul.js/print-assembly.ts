@@ -2,7 +2,7 @@ import { compat } from '../common/compat'
 import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
 import { Cells } from './cells'
-import { Cusses, CussInstance } from './cusses'
+import * as cusses from './cusses'
 import { LexedLine, LineType } from './lexer'
 import * as ops from './operations'
 import * as parse from './parser'
@@ -28,7 +28,7 @@ const EMPTY_CELL_WORD = ' '.repeat(COLUMNS.CellWord)
 const COUNT_OP = ops.requireOperation('COUNT')
 const ERASE_OP = ops.requireOperation('ERASE')
 
-export function printCuss (instance: CussInstance): void {
+export function printCuss (instance: cusses.CussInstance): void {
   const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
   compat.log(formattedSerial, instance.cuss.message)
   if (instance.error !== undefined) {
@@ -46,8 +46,8 @@ export function printAssembly (printer: PrinterContext, pass2: Pass2Output): voi
   let page = 0
 
   pass2.cards.forEach(card => {
-    if (source !== card.lexedLine.sourceLine.source || page !== card.lexedLine.sourceLine.page) {
-      printer.printPageBreak()
+    if (page !== card.lexedLine.sourceLine.page) {
+      printer.printPageBreak(card.lexedLine.sourceLine.page)
       const newSource = source !== card.lexedLine.sourceLine.source
       source = card.lexedLine.sourceLine.source
       page = card.lexedLine.sourceLine.page
@@ -227,9 +227,9 @@ function formatLine (line: LexedLine): { field1: string, field2: string, field3:
   return { field1, field2, field3, remark }
 }
 
-function printCusses (cusses?: Cusses): void {
-  if (cusses !== undefined) {
-    cusses.cusses().forEach(instance => {
+function printCusses (toPrint?: cusses.Cusses): void {
+  if (toPrint !== undefined) {
+    toPrint.cusses().forEach(instance => {
       const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
       compat.log('E', '    ', formattedSerial, instance.cuss.message)
       if (instance.error !== undefined) {
@@ -329,7 +329,7 @@ export function printCounts (printer: PrinterContext, pass2: Pass2Output): void 
     cumCount += count.totalCount
     count.cumCount = cumCount
   })
-  printTable(printer, sortedTable.values(), COUNT_TABLE_DATA)
+  printTable(printer, COUNT_TABLE_DATA, sortedTable.values())
 
   function parseSymbol (address: number, card: parse.ClericalCard, field: string): string {
     if (card.operation.indexed) {

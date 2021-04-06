@@ -45,12 +45,12 @@ export class PrinterContext {
     this.pageDirty = true
   }
 
-  printPageBreak (): void {
-    if (this.pageDirty) {
+  printPageBreak (nextPage?: number): void {
+    if (this.pageDirty || this.page !== (nextPage ?? this.page)) {
       this.pageDirty = false
       compat.output('')
       compat.output(PAGE_BREAK)
-      ++this.page
+      this.page = nextPage ?? this.page + 1
       this.printHeader()
     }
   }
