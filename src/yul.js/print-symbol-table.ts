@@ -1,4 +1,5 @@
 import * as addressing from './addressing'
+import { EolSection, Options } from './bootstrap'
 import * as ops from './operations'
 import * as parse from './parser'
 import { compareSymbolsEbcdic, PrinterContext } from './printer-utils'
@@ -10,19 +11,31 @@ const ERASE_OP = ops.requireOperation('ERASE')
 const MINUS_ERASE_OP = ops.requireOperation('=MINUS')
 const PLUS_ERASE_OP = ops.requireOperation('=PLUS')
 
-export function printSymbolTable (printer: PrinterContext, symbolTable: Pass2SymbolTable): void {
+export function printSymbolTable (printer: PrinterContext, symbolTable: Pass2SymbolTable, options: Options): void {
   const table = symbolTable.getTable()
-  const symbolSortedTable = [...table.entries()].sort(ebcdicSort)
-  printTable(printer, ALL_TABLE_DATA, symbolSortedTable.values())
-  printer.printPageBreak()
-  // TODO: Unassigned data
-  printTable(printer, UNREF_TABLE_DATA, symbolSortedTable.values())
-  printer.printPageBreak()
-  const valueSortedTable = [...table.entries()].sort(valueSort)
-  printTable(printer, XREF_TABLE_DATA, valueSortedTable.values())
-  printer.printPageBreak()
-  printSummary(printer, table)
-  printer.printPageBreak()
+  if (options.eol.has(EolSection.Symbols)
+    || options.eol.has(EolSection.UndefinedSymbols)
+    || options.eol.has(EolSection.UnreferencedSymbols)) {
+    const symbolSortedTable = [...table.entries()].sort(ebcdicSort)
+    if (options.eol.has(EolSection.Symbols)) {
+      printTable(printer, ALL_TABLE_DATA, symbolSortedTable.values(), options)
+      printer.endPage()
+    }
+    // TODO: Unassigned data
+    if (options.eol.has(EolSection.UnreferencedSymbols)) {
+      printTable(printer, UNREF_TABLE_DATA, symbolSortedTable.values(), options)
+      printer.endPage()
+    }
+  }
+  if (options.eol.has(EolSection.CrossReference)) {
+    const valueSortedTable = [...table.entries()].sort(valueSort)
+    printTable(printer, XREF_TABLE_DATA, valueSortedTable.values(), options)
+    printer.endPage()
+  }
+  if (options.eol.has(EolSection.TableSummary)) {
+    printSummary(printer, table, options)
+    printer.endPage()
+  }
 }
 
 function ebcdicSort (e1: [string, SymbolEntry], e2: [string, SymbolEntry]): number {
@@ -201,7 +214,7 @@ function xrefEntryString (data: [string, SymbolEntry]): string | undefined {
   }
 }
 
-function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>): void {
+function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>, options: Options): void {
   let normal = 0
   let equals = 0
   table.forEach(entry => {
@@ -217,7 +230,9 @@ function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>)
   const equalsString = equals.toString()
   const len = Math.max(normalString.length, equalsString.length)
   printer.println('')
-  printer.println('SUMMARY OF SYMBOL TABLE LISTINGS')
+  if (options.tableText) {
+    printer.println('SUMMARY OF SYMBOL TABLE LISTINGS')
+  }
   printer.println('')
   printer.println(normal.toString().padStart(14), ' DEFINED NORMALLY')
   printer.println('')

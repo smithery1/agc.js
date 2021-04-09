@@ -443,6 +443,7 @@ addClerical('MEMORY', 0, Necessity.Required, Necessity.Required, Necessity.Never
 addClerical('SBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
 addClerical('SETLOC', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
 alias('LOC', 'SETLOC')
+addClerical('SUBRO', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
 
 //
 // Address

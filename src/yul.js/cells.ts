@@ -53,7 +53,7 @@ export class Cells {
     const existing = this.cells[location]
 
     if (existing?.definition !== undefined) {
-      this.cussConflict(definition, existing.definition)
+      this.cussConflict(existing.definition, definition)
     }
 
     this.cells[location] = { definition }
@@ -91,7 +91,7 @@ export class Cells {
       this.cells[location] = { definition: definition, value }
     } else {
       if (existing.value !== undefined) {
-        this.cussConflict(definition, existing.definition)
+        this.cussConflict(existing.definition, definition)
       }
       existing.value = value
     }
@@ -118,7 +118,7 @@ export class Cells {
     const location = addressing.memoryOffset(address)
     const existing = this.cells[location]
     if (existing !== undefined) {
-      this.cussConflict(definition, existing.definition)
+      this.cussConflict(existing.definition, definition)
     }
     this.cells[location] = { definition, value }
   }

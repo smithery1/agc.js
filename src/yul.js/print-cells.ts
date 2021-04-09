@@ -1,4 +1,5 @@
 import * as addressing from './addressing'
+import { Options } from './bootstrap'
 import { Cell, Cells } from './cells'
 import * as ops from './operations'
 import * as parse from './parser'
@@ -27,10 +28,10 @@ const MEMORY_SUMMARY_TABLE_DATA: TableData<string[]> = {
   separator: () => false
 }
 
-export function printMemorySummary (printer: PrinterContext, container: Cells): void {
+export function printMemorySummary (printer: PrinterContext, container: Cells, options: Options): void {
   const cells = container.getCells()
 
-  printTable(printer, MEMORY_SUMMARY_TABLE_DATA, entries())
+  printTable(printer, MEMORY_SUMMARY_TABLE_DATA, entries(), options)
 
   function * entries (): Generator<string[]> {
     yield handle(addressing.TRUE_RANGE_HARDWARE.min, addressing.TRUE_RANGE_SPECIAL.max, MEM_SPECIAL)
@@ -49,6 +50,7 @@ export function printMemorySummary (printer: PrinterContext, container: Cells): 
     yield ['02,2000', ' TO ', '03,3777', '  ', MEM_SPECIAL]
     yield ['']
     yield * handleRange(addressing.TRUE_RANGE_VARIABLE_FIXED_2, MEM_SWITCHABLE + ' ' + MEM_FIXED)
+    printer.endPage()
 
     function * handleRange (range: addressing.Range, desc: string): Generator<string[]> {
       const minOffset = addressing.memoryOffset(range.min)
@@ -82,7 +84,7 @@ export function printMemorySummary (printer: PrinterContext, container: Cells): 
   }
 }
 
-export function printParagraphs (printer: PrinterContext, container: Cells): void {
+export function printParagraphs (printer: PrinterContext, container: Cells, options: Options): void {
   const cells = container.getCells()
 
   // Ref SYM, IIF
@@ -91,9 +93,11 @@ export function printParagraphs (printer: PrinterContext, container: Cells): voi
 
   for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 256) {
     if ((row % 45) === 0) {
-      printer.printPageBreak()
-      printer.println(header)
-      printer.println('')
+      printer.endPage()
+      if (options.tableText && (options.formatted || row === 0)) {
+        printer.println(header)
+        printer.println('')
+      }
     }
     ++row
 
@@ -128,6 +132,8 @@ export function printParagraphs (printer: PrinterContext, container: Cells): voi
       )
     }
   }
+
+  printer.endPage()
 }
 
 const OCTAL_LISTING_COLUMNS = {
@@ -138,13 +144,15 @@ const OCTAL_LISTING_COLUMNS = {
   Parity: 1
 }
 
-export function printOctalListing (printer: PrinterContext, container: Cells): void {
+export function printOctalListing (printer: PrinterContext, container: Cells, options: Options): void {
   const cells = container.getCells()
   let paragraph = -1
 
   for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 8) {
     printLine(i, cells)
   }
+
+  printer.endPage()
 
   function printLine (startIndex: number, cells: Cell[]): void {
     interface PrintEntry {
@@ -159,14 +167,16 @@ export function printOctalListing (printer: PrinterContext, container: Cells): v
     const addressParagraph = addressing.paragraph(address)
     if (addressParagraph !== undefined && addressParagraph !== paragraph) {
       paragraph = addressParagraph
-      printer.printPageBreak()
-      printer.println(
-        'OCTAL LISTING FOR PARAGRAPH #',
-        paragraph.toString(8).padStart(OCTAL_LISTING_COLUMNS.Paragraph, '0') + ',',
-        ' WITH PARITY BIT IN BINARY AT THE RIGHT OF EACH WORD, "@" DENOTES UNUSED FIXED MEMORY')
-      printer.println('')
-      printer.println('ALL VALID WORDS ARE BASIC INSTRUCTIONS EXCEPT THOSE MARKED "I" (INTERPRETIVE OPERATOR WORDS) OR "C" (CONSTANT)')
-      printer.println('')
+      printer.endPage()
+      if (options.formatted && options.tableText) {
+        printer.println(
+          'OCTAL LISTING FOR PARAGRAPH #',
+          paragraph.toString(8).padStart(OCTAL_LISTING_COLUMNS.Paragraph, '0') + ',',
+          ' WITH PARITY BIT IN BINARY AT THE RIGHT OF EACH WORD, "@" DENOTES UNUSED FIXED MEMORY')
+        printer.println('')
+        printer.println('ALL VALID WORDS ARE BASIC INSTRUCTIONS EXCEPT THOSE MARKED "I" (INTERPRETIVE OPERATOR WORDS) OR "C" (CONSTANT)')
+        printer.println('')
+      }
     } else if (startIndex % 32 === 0) {
       printer.println('')
     }
@@ -220,8 +230,12 @@ export function printOctalListing (printer: PrinterContext, container: Cells): v
   }
 }
 
-export function printOctalListingCompact (printer: PrinterContext, container: Cells): void {
+export function printOctalListingCompact (printer: PrinterContext, container: Cells, options: Options): void {
   const cells = container.getCells()
+
+  if (options.tableColumnHeaders) {
+    printer.println('OCTAL COMPACT LISTING - ADDRESS 0 1 2 3 4 5 6 7')
+  }
 
   for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 8) {
     printLine(i, cells)
@@ -309,7 +323,7 @@ function occupiedEntryString (data: [number, OccupiedContext]): string | undefin
   return undefined
 }
 
-export function printOccupied (printer: PrinterContext, container: Cells): void {
+export function printOccupied (printer: PrinterContext, container: Cells, options: Options): void {
   const cells = container.getCells()
   const context: OccupiedContext = {
     cells,
@@ -318,7 +332,8 @@ export function printOccupied (printer: PrinterContext, container: Cells): void 
     lineCount: 0
   }
 
-  printTable(printer, OCCUPIED_TABLE_DATA, entries())
+  printTable(printer, OCCUPIED_TABLE_DATA, entries(), options)
+  printer.endPage()
 
   function * entries (): Generator<[number, OccupiedContext]> {
     for (let i = 0; i < cells.length; i++) {

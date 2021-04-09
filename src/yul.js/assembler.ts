@@ -1,4 +1,5 @@
 import { compat } from '../common/compat'
+import { EolSection, Options } from './bootstrap'
 import { isCussInstance } from './cusses'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
@@ -55,18 +56,18 @@ export default class Assembler {
   /**
    * Runs the assembler on the specified URL, which typically points to a MAIN.agc yaYUL formatted file.
    *
-   * @param mainUrl the URL of the starting file
+   * @param options assemble and output options
    * @returns true iff assembly succeeded without errors
    */
-  async assemble (mainUrl: string): Promise<boolean> {
+  async assemble (options: Options): Promise<boolean> {
     try {
-      const pass1Result = await this.pass1.assemble(mainUrl)
+      const pass1Result = await this.pass1.assemble(options.file)
       if (isCussInstance(pass1Result)) {
         printCuss(pass1Result)
         return false
       }
       const pass2Result = this.pass2.assemble(pass1Result)
-      this.printListing(mainUrl, pass2Result)
+      this.printListing(options, pass2Result)
       return pass2Result.fatalCussCount === 0
     } catch (error) {
       compat.log(error.stack)
@@ -74,28 +75,39 @@ export default class Assembler {
     }
   }
 
-  private printListing (mainUrl: string, pass2: Pass2Output): void {
-    const program = getProgram(mainUrl)
+  private printListing (options: Options, pass2: Pass2Output): void {
+    const program = getProgram(options.file)
     const user = compat.username()
-    const printer = new PrinterContext('001', program, user, '0000000-000')
+    const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
 
-    printer.printHeader()
-    printAssembly(printer, pass2)
-    printer.printPageBreak()
-    printSymbolTable(printer, pass2.symbolTable)
-    printer.printPageBreak()
-    printMemorySummary(printer, pass2.cells)
-    printer.printPageBreak()
-    printCounts(printer, pass2)
-    printer.printPageBreak()
-    printParagraphs(printer, pass2.cells)
-    printer.printPageBreak()
-    printOctalListing(printer, pass2.cells)
-    printer.printPageBreak()
-    printOccupied(printer, pass2.cells)
-    printer.printPageBreak()
-    this.printResults(printer, pass2)
-    printOctalListingCompact(printer, pass2.cells)
+    if (options.formatted && options.eol.size > 1) {
+      printer.printHeader()
+    }
+    if (options.eol.has(EolSection.Listing) || options.eol.has(EolSection.Cusses)) {
+      printAssembly(printer, pass2, options)
+    }
+    printSymbolTable(printer, pass2.symbolTable, options)
+    if (options.eol.has(EolSection.MemorySummary)) {
+      printMemorySummary(printer, pass2.cells, options)
+    }
+    if (options.eol.has(EolSection.Count)) {
+      printCounts(printer, pass2, options)
+    }
+    if (options.eol.has(EolSection.Paragraphs)) {
+      printParagraphs(printer, pass2.cells, options)
+    }
+    if (options.eol.has(EolSection.OctalListing)) {
+      printOctalListing(printer, pass2.cells, options)
+    }
+    if (options.eol.has(EolSection.OctalCompact)) {
+      printOctalListingCompact(printer, pass2.cells, options)
+    }
+    if (options.eol.has(EolSection.Occupied)) {
+      printOccupied(printer, pass2.cells, options)
+    }
+    if (options.eol.has(EolSection.Results)) {
+      this.printResults(printer, pass2)
+    }
 
     function getProgram (mainUrl: string): string {
       const url = new URL(mainUrl)
@@ -153,6 +165,7 @@ export default class Assembler {
     const totalCusses = pass2.fatalCussCount + pass2.nonFatalCussCount
     const cussed = totalCusses === 0 ? 'NO ' : totalCusses.toString()
     printer.println(`ASSEMBLY WAS ${result}${manufacturable}. ${cussed} LINES WERE CUSSED.`)
+    printer.endPage()
 
     function inSet (digit: string): boolean {
       return digit === '2' || digit === '3' || digit === '6' || digit === '7'

@@ -22,7 +22,7 @@ export function compareSymbolsEbcdic (str1: string, str2: string): number {
   }
 }
 
-export const LINE_LENGTH = 130
+export const LINE_LENGTH = 120
 const PAGE_BREAK = '-'.repeat(LINE_LENGTH)
 const MONTHS = [
   'JANUARY', 'FEBRAURY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
@@ -31,36 +31,48 @@ const MONTHS = [
 
 export class PrinterContext {
   private readonly header: string
+  private readonly formatted: boolean
   private pageDirty = false
+  private pageBreak = false
   private page = 1
 
-  constructor (revision: string, program: string, user: string, part: string) {
+  constructor (revision: string, program: string, user: string, part: string, formatted: boolean) {
     const header = `YUL.JS:  ASSEMBLE REVISION ${revision.toUpperCase()} OF AGC PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()} ${part}`
     const spacing = ' '.repeat(Math.max(0, 78 - header.length))
     this.header = header + spacing
+    this.formatted = formatted
   }
 
   println (...data: any[]): void {
-    compat.output(...data)
-    this.pageDirty = true
-  }
-
-  printPageBreak (nextPage?: number): void {
-    if (this.pageDirty || this.page !== (nextPage ?? this.page)) {
-      this.pageDirty = false
+    if (this.pageBreak) {
+      this.pageBreak = false
       compat.output('')
       compat.output(PAGE_BREAK)
-      this.page = nextPage ?? this.page + 1
       this.printHeader()
+    }
+    if (this.formatted || data.length !== 1 || data[0] === '') {
+      compat.output(...data)
+      this.pageDirty = true
+    }
+  }
+
+  endPage (nextPage?: number): void {
+    if (this.formatted && (this.pageDirty || this.page !== (nextPage ?? this.page))) {
+      this.pageDirty = false
+      this.pageBreak = true
+      this.page = nextPage ?? this.page + 1
     }
   }
 
   printHeader (): void {
-    const now = new Date()
-    const time = `${now.getHours()}:${now.getMinutes()} ${MONTHS[now.getMonth()]} ${now.getDate()},${now.getFullYear()}`
-    const spacing = ' '.repeat(Math.max(0, LINE_LENGTH - 12 - this.header.length - time.length))
+    if (this.formatted) {
+      const now = new Date()
+      const time = `${now.getHours()}:${now.getMinutes()} ${MONTHS[now.getMonth()]} ${now.getDate()},${now.getFullYear()}`
+      const occupied = LINE_LENGTH - 12 - this.header.length - time.length
+      const spacing = ' '.repeat(Math.max(0, occupied))
 
-    compat.output(this.header, time, spacing, 'PAGE', this.page.toString().padStart(4))
-    compat.output('')
+      compat.output(this.header, time, spacing, 'PAGE', this.page.toString().padStart(4))
+      compat.output('')
+    }
   }
 }

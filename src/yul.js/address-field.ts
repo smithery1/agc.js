@@ -34,7 +34,8 @@ export interface TrueAddress {
 export const SIGNED_EXPR = /^[+-]\d+D?$/
 export const UNSIGNED_EXPR = /^\d+D?$/
 
-const OCTAL_INTEGER_EXPR = /^[0-7]+/
+const DECIMAL_INTEGER_EXPR = /^[0-9]+D?$/
+const OCTAL_INTEGER_EXPR = /^[0-7]+$/
 const ADDRESS_FIELD_EXPR = /^([^\s]+)(?:\s+([+-]\d+D?))?$/
 const RANGE_FIELD_EXPR = /^(\d+D?)\s+-\s+(\d+D?)$/
 const INDEXED_FIELD_EXPR = /^([^\s,]+)(?:\s+([+-]\d+D?))?(?:,([12]))?$/
@@ -53,22 +54,25 @@ const MAX_15_BITS = 0x7FFF
  * @returns the parsed field or a cuss
  */
 export function parse (
-  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean): AddressField | cusses.Cuss {
+  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean, parseCusses: cusses.Cusses):
+  AddressField | undefined {
   const match = interpretiveIndex !== ops.Necessity.Never
     ? INDEXED_FIELD_EXPR.exec(field)
     : ADDRESS_FIELD_EXPR.exec(field)
   if (match === null || match[1] === undefined) {
     // If ERASE field does not match standard address form, check for a range.
-    return rangeAllowed ? parseErase(field) : cusses.Cuss3D
+    if (rangeAllowed) {
+      return parseErase(field, parseCusses)
+    }
+    parseCusses.add(cusses.Cuss3D)
+    return undefined
   }
 
   let offset: number | undefined
   if (match[2] !== undefined) {
-    const parsedSigned = parseSignedOffset(match[2])
-    if (cusses.isCuss(parsedSigned)) {
-      return parsedSigned
-    } else {
-      offset = parsedSigned
+    offset = parseSignedOffset(match[2], parseCusses)
+    if (offset === undefined) {
+      return undefined
     }
   }
 
@@ -76,7 +80,8 @@ export function parse (
   if (interpretiveIndex !== ops.Necessity.Never) {
     if (match[3] === undefined) {
       if (interpretiveIndex === ops.Necessity.Required) {
-        return cusses.Cuss17
+        parseCusses.add(cusses.Cuss17)
+        return undefined
       }
     } else {
       indexRegister = Number.parseInt(match[3])
@@ -84,73 +89,78 @@ export function parse (
   }
 
   if (UNSIGNED_EXPR.test(match[1])) {
-    const parsed = parseUnsigned(match[1], MAX_15_BITS)
-    if (cusses.isCuss(parsed)) {
-      return parsed
-    } else {
-      return { value: parsed, offset, indexRegister }
+    const parsed = parseUnsigned(match[1], MAX_15_BITS, parseCusses)
+    if (parsed === undefined) {
+      return undefined
     }
+    return { value: parsed, offset, indexRegister }
   }
 
   if (SIGNED_EXPR.test(match[1])) {
-    const parsed = parseSignedOffset(match[1])
-    if (cusses.isCuss(parsed)) {
-      return parsed
-    } else {
-      return { value: { value: parsed }, offset, indexRegister }
+    const parsed = parseSignedOffset(match[1], parseCusses)
+    if (parsed === undefined) {
+      return undefined
     }
+    return { value: { value: parsed }, offset, indexRegister }
   }
 
   return { value: match[1], offset, indexRegister }
 
-  function parseErase (field: string): AddressField | cusses.Cuss {
+  function parseErase (field: string, parseCusses: cusses.Cusses): AddressField | undefined {
     const rangeMatch = RANGE_FIELD_EXPR.exec(field)
     if (rangeMatch !== null) {
-      const value1 = parseUnsigned(rangeMatch[1], MAX_15_BITS)
-      if (cusses.isCuss(value1)) {
-        return value1
-      }
-      const value2 = parseUnsigned(rangeMatch[2], MAX_15_BITS)
-      if (cusses.isCuss(value2)) {
-        return value2
+      const value1 = parseUnsigned(rangeMatch[1], MAX_15_BITS, parseCusses)
+      const value2 = parseUnsigned(rangeMatch[2], MAX_15_BITS, parseCusses)
+      if (value1 === undefined || value2 === undefined) {
+        return undefined
       }
 
       if (value2 < value1) {
-        return cusses.Cuss1E
+        parseCusses.add(cusses.Cuss1E)
+        return undefined
       }
       const offset = value2 - value1
       return { value: value1, offset }
     }
 
-    return cusses.Cuss3D
+    parseCusses.add(cusses.Cuss3D)
+    return undefined
   }
 
-  function parseSignedOffset (signed: string): number | cusses.Cuss {
+  function parseSignedOffset (signed: string, parseCusses: cusses.Cusses): number | undefined {
     if (!SIGNED_EXPR.test(signed)) {
-      return cusses.Cuss3D
+      parseCusses.add(cusses.Cuss3D)
     }
 
-    const parsed = parseUnsigned(signed.substring(1), MAX_15_BITS)
-    if (cusses.isCuss(parsed)) {
-      return parsed
+    const parsed = parseUnsigned(signed.substring(1), MAX_15_BITS, parseCusses)
+    if (parsed === undefined) {
+      return undefined
     }
     const isNegative = signed.charAt(0) === '-'
     return isNegative ? -parsed : parsed
   }
 
-  function parseUnsigned (input: string, max: number): number | cusses.Cuss {
+  function parseUnsigned (input: string, max: number, parseCusses: cusses.Cusses): number | undefined {
     let value: number
 
-    if (input.charAt(input.length - 1) === 'D') {
-      value = Number.parseInt(input.substring(0, input.length - 1), 10)
-    } else if (!OCTAL_INTEGER_EXPR.test(input)) {
-      return cusses.Cuss21
-    } else {
+    if (OCTAL_INTEGER_EXPR.test(input)) {
       value = Number.parseInt(input, 8)
+    } else if (DECIMAL_INTEGER_EXPR.test(input)) {
+      if (input.charAt(input.length - 1) === 'D') {
+        value = Number.parseInt(input.substring(0, input.length - 1), 10)
+      } else {
+        // Should have a 'D'
+        parseCusses.add(cusses.Cuss21)
+        value = Number.parseInt(input.substring(0, input.length), 10)
+      }
+    } else {
+      parseCusses.add(cusses.Cuss3D)
+      return undefined
     }
 
     if (value > max) {
-      return cusses.Cuss3F
+      parseCusses.add(cusses.Cuss3F)
+      return undefined
     }
 
     return value

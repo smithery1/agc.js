@@ -1,6 +1,7 @@
 import { compat } from '../common/compat'
 import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
+import { EolSection, Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LexedLine, LineType } from './lexer'
@@ -41,32 +42,73 @@ export function printCuss (instance: cusses.CussInstance): void {
   }
 }
 
-export function printAssembly (printer: PrinterContext, pass2: Pass2Output): void {
+export function printAssembly (printer: PrinterContext, pass2: Pass2Output, options: Options): void {
   let source = ''
   let page = 0
+  let cussSource = ''
+  const printListing = options.eol.has(EolSection.Listing)
 
   pass2.cards.forEach(card => {
     if (page !== card.lexedLine.sourceLine.page) {
-      printer.printPageBreak(card.lexedLine.sourceLine.page)
-      const newSource = source !== card.lexedLine.sourceLine.source
+      if (printListing) {
+        printer.endPage(card.lexedLine.sourceLine.page)
+      }
       source = card.lexedLine.sourceLine.source
       page = card.lexedLine.sourceLine.page
-      printHeader(printer, source, card.eBank, card.sBank)
-      if (newSource) {
-        source = card.lexedLine.sourceLine.source
+      if (printListing) {
+        printHeader(printer, source, card.eBank, card.sBank)
       }
     }
-    if (parse.isRemark(card.card)) {
-      if (card.card.fullLine) {
-        printFullLineRemark(printer, card.lexedLine)
-      } else {
-        printInstructionCard(printer, card, pass2.cells, 'A')
-      }
-    } else if (card.lexedLine.type !== LineType.Pagination) {
-      printInstructionCard(printer, card, pass2.cells, ' ')
+    if (printListing) {
+      printCard(printer, pass2, card)
     }
-    printCusses(card.cusses)
+    printCusses(card)
   })
+
+  if (printListing) {
+    printer.endPage()
+  }
+
+  function printCusses (card: AssembledCard): void {
+    if (card.cusses === undefined) {
+      return
+    }
+    if (!printListing) {
+      if (source !== cussSource) {
+        compat.log(source)
+        cussSource = source
+      }
+      printCard(printer, pass2, card)
+    }
+    card.cusses.cusses().forEach(instance => {
+      const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
+      compat.log('E', '    ', formattedSerial, instance.cuss.message)
+      if (instance.error !== undefined) {
+        compat.log('E', '        ', instance.error.message)
+      }
+      if (instance.context !== undefined) {
+        instance.context.forEach(item => {
+          compat.log('E', '        ', item)
+        })
+      }
+    })
+
+    if (!printListing) {
+      compat.output('')
+    }
+  }
+}
+
+function printCard (printer: PrinterContext, pass2: Pass2Output, card: AssembledCard): void {
+  if (parse.isRemark(card.card)) {
+    if (card.card.fullLine) {
+      printFullLineRemark(printer, card.lexedLine)
+    } else {
+      printInstructionCard(printer, card, pass2.cells, 'A')
+    }
+  } else if (card.lexedLine.type !== LineType.Pagination) {
+    printInstructionCard(printer, card, pass2.cells, ' ')
+  }
 }
 
 function printHeader (printer: PrinterContext, source: string, eBank: number, sBank: number): void {
@@ -74,7 +116,7 @@ function printHeader (printer: PrinterContext, source: string, eBank: number, sB
   const sBankString = sBank === 0 ? '' : 'S' + sBank.toString()
   const maxSourceLength = LINE_LENGTH - 2 - EMPTY_LINE_NUMBER.length - 7
   let sourceString = source
-  if (sourceString.length > maxSourceLength) {
+  if (sourceString.length >= maxSourceLength - 1) {
     const halfLength = Math.floor(maxSourceLength / 2) - 2
     sourceString = source.substring(0, halfLength) + '...' + source.substring(source.length - halfLength)
   }
@@ -227,23 +269,6 @@ function formatLine (line: LexedLine): { field1: string, field2: string, field3:
   return { field1, field2, field3, remark }
 }
 
-function printCusses (toPrint?: cusses.Cusses): void {
-  if (toPrint !== undefined) {
-    toPrint.cusses().forEach(instance => {
-      const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
-      compat.log('E', '    ', formattedSerial, instance.cuss.message)
-      if (instance.error !== undefined) {
-        compat.log('E', '        ', instance.error.message)
-      }
-      if (instance.context !== undefined) {
-        instance.context.forEach(item => {
-          compat.log('E', '        ', item)
-        })
-      }
-    })
-  }
-}
-
 interface CountContext {
   name: string
   refs: number
@@ -289,7 +314,7 @@ function countEntryString (context: CountContext): string | undefined {
     + ' ' + context.cumCount.toString().padStart(COUNT_COLUMNS.Counts)
 }
 
-export function printCounts (printer: PrinterContext, pass2: Pass2Output): void {
+export function printCounts (printer: PrinterContext, pass2: Pass2Output, options: Options): void {
   // Ref SYM, III-21
   const map = new Map<string, CountContext>()
   let currentCount: CountContext = createCountContext('')
@@ -329,7 +354,8 @@ export function printCounts (printer: PrinterContext, pass2: Pass2Output): void 
     cumCount += count.totalCount
     count.cumCount = cumCount
   })
-  printTable(printer, COUNT_TABLE_DATA, sortedTable.values())
+  printTable(printer, COUNT_TABLE_DATA, sortedTable.values(), options)
+  printer.endPage()
 
   function parseSymbol (address: number, card: parse.ClericalCard, field: string): string {
     if (card.operation.indexed) {

@@ -211,6 +211,7 @@ const INDEX_OP = ops.requireOperation('INDEX')
 const ERASE_OP = ops.requireOperation('ERASE')
 const EXTEND_OP = ops.requireOperation('EXTEND')
 const MEMORY_OP = ops.requireOperation('MEMORY')
+const SUBRO_OP = ops.requireOperation('SUBRO')
 const STADR_OP = ops.requireOperation('STADR')
 const STORE_OP = ops.requireOperation('STORE')
 
@@ -381,7 +382,7 @@ export class Parser {
     }
 
     const pushDown = this.popExplicit(input.parsedOp.op)
-    let parsed: field.AddressField | cusses.Cuss
+    let parsed: field.AddressField | undefined
     if (operand === undefined) {
       // BBCON*
       parsed = { value: 0 }
@@ -389,18 +390,17 @@ export class Parser {
       if (input.parsedOp.op === IAW_OP) {
         if (pushDown === undefined) {
           this.cardCusses.add(cusses.Cuss0E)
-          parsed = field.parse(operand, ops.Necessity.Never, false)
+          parsed = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
         } else {
           const indexed = pushDown.operator.indexed && pushDown.operand.index
           const indexedNecessity = indexed ? ops.Necessity.Required : ops.Necessity.Never
-          parsed = field.parse(operand, indexedNecessity, false)
+          parsed = field.parse(operand, indexedNecessity, false, this.cardCusses)
         }
       } else {
-        parsed = field.parse(operand, ops.Necessity.Never, false)
+        parsed = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
       }
 
-      if (cusses.isCuss(parsed)) {
-        this.cardCusses.add(parsed)
+      if (parsed === undefined) {
         return { lexedLine: input.lexedLine }
       }
     }
@@ -438,7 +438,7 @@ export class Parser {
     if (input.parsedOp.op.words > 0) {
       pushDown = this.popExplicit(input.parsedOp.op)
     } else if (this.interpretiveOperands.length > 0) {
-      // Let's not allow weird clerical operations like SETLOC in the middle of an IIW / IAW pair
+      // Let's also not allow clerical operations like SETLOC in the middle of an IIW / IAW pair
       this.cardCusses.add(cusses.Cuss0F)
     }
 
@@ -454,15 +454,18 @@ export class Parser {
       return { lexedLine: input.lexedLine }
     }
 
-    let parsed: field.AddressField | cusses.Cuss | undefined
+    let parsed: field.AddressField | undefined
     const addressField = input.lexedLine.field3
     if (addressField !== undefined) {
-      const rangeAllowed = input.parsedOp.op === ERASE_OP || input.parsedOp.op === MEMORY_OP
-      parsed = field.parse(addressField, ops.Necessity.Never, rangeAllowed)
-    }
-    if (cusses.isCuss(parsed)) {
-      this.cardCusses.add(parsed)
-      return { lexedLine: input.lexedLine }
+      if (input.parsedOp.op === SUBRO_OP) {
+        parsed = { value: addressField }
+      } else {
+        const rangeAllowed = input.parsedOp.op === ERASE_OP || input.parsedOp.op === MEMORY_OP
+        parsed = field.parse(addressField, ops.Necessity.Never, rangeAllowed, this.cardCusses)
+      }
+      if (parsed === undefined) {
+        return { lexedLine: input.lexedLine }
+      }
     }
 
     const card: ClericalCard = {
@@ -530,12 +533,7 @@ export class Parser {
     let address: field.AddressField | undefined
     const operand = input.lexedLine.field3
     if (operand !== undefined) {
-      const parsed = field.parse(operand, ops.Necessity.Never, false)
-      if (cusses.isCuss(parsed)) {
-        this.cardCusses.add(parsed)
-      } else {
-        address = parsed
-      }
+      address = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
     }
 
     if (input.parsedOp.op === EXTEND_OP) {
@@ -625,9 +623,8 @@ export class Parser {
     // Others must have '*' set and be indexable on the first operand.
     const otherIndexable = (input.parsedOp.indexed && input.parsedOp.op.operand1.index)
     const indexable = isStore ? ops.Necessity.Optional : (otherIndexable ? ops.Necessity.Required : ops.Necessity.Never)
-    const fieldParsed = field.parse(operand, indexable, false)
-    if (cusses.isCuss(fieldParsed)) {
-      this.cardCusses.add(fieldParsed)
+    const fieldParsed = field.parse(operand, indexable, false, this.cardCusses)
+    if (fieldParsed === undefined) {
       return { lexedLine: input.lexedLine }
     }
 

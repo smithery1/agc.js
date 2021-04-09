@@ -175,8 +175,10 @@ function lexInstruction (sourceLine: SourceLine, remark?: string): LexedLine | u
   let accumulating = ''
   let i = 0
   let tabbing = false
+  let fieldNumber = 1
   let field1: string | undefined
   let field2: string | undefined
+  let field3: string | undefined
 
   while (i < sourceLine.line.length) {
     ++column
@@ -198,25 +200,35 @@ function lexInstruction (sourceLine: SourceLine, remark?: string): LexedLine | u
     if (column === 15) {
       field1 = accumulating.length > 0 ? accumulating.trim() : undefined
       accumulating = ''
+      ++fieldNumber
     } else if (column === 25 || (column > 16 && isWhitespace(c))) {
       field2 = accumulating.trim()
       accumulating = ''
       accumulating = sourceLine.line.substring(i)
+      ++fieldNumber
       break
     }
   }
 
-  if (field2 === undefined) {
+  if (fieldNumber === 1) {
+    if (accumulating.length > 0) {
+      field1 = accumulating.trim()
+      accumulating = ''
+    }
+  } else if (fieldNumber === 2) {
     if (accumulating.length > 0) {
       field2 = accumulating.trim()
       accumulating = ''
-    } else if (field1 === undefined) {
-      return remark === undefined ? undefined : { type: LineType.Remark, sourceLine, field1: '', remark }
-    } else {
-      return { type: LineType.Instruction, sourceLine, field1, field2, remark }
+    }
+  } else {
+    if (accumulating.length > 0) {
+      field3 = accumulating.trim()
     }
   }
 
-  const field3 = accumulating.length > 0 ? accumulating.trim() : undefined
+  if (field1 === undefined && field2 === undefined && field3 === undefined) {
+    return remark === undefined ? undefined : { type: LineType.Remark, sourceLine, field1: '', remark }
+  }
+
   return { type: LineType.Instruction, sourceLine, field1, field2, field3, remark }
 }
