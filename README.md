@@ -29,7 +29,7 @@ Subsequent steps can implement further external interfaces and tie them into the
 
 ## Current State
 
-Step one is in progress. The assembler "yul.js" produces correct binary output for the [Luminary 099 source][2]. Next is to clean up the yul.js source and comments, add other YUL-like output for fun, test against other mission software, and write the test suite. See the [yul.js README][4] for more information on the assembler and how it works.
+Step one is in progress. The assembler "yul.js" produces correct binary output for all Luminary code bases and a sample Comanche code base. Visual inspection of varying degrees of exactness has shown the end of listing table data identical to that produced by GAP. Next up is to test against the mission software and write the test suite. See the [yul.js README][4] for more information on the assembler and how it works.
 
 [1]: https://virtualagc.github.io/virtualagc/index.html
 [2]: https://github.com/virtualagc/virtualagc/tree/master/Luminary099
@@ -46,6 +46,6 @@ H\. Blair-Smith, "AGC4 MEMO # 9 - Block II Instructions", MIT Instrumentation La
 
 "Apollo Guidance Computer Information Series Issue 13: YUL Programming System", MIT Instrumentation Laboratory, Cambridge, MA, FR-2-113, December, 5, 1963, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf.
 
-F\. O'Brien, *The Apollo Guidance Computer: Architecture and Operation", Chichester, UK: Praxis Publishing Ltd., 2010.
+F\. O'Brien, *The Apollo Guidance Computer: Architecture and Operation*, Chichester, UK: Praxis Publishing Ltd., 2010.
 
 R\. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
