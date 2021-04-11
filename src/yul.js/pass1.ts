@@ -42,6 +42,7 @@ export class Pass1Assembler {
   }
 
   private readonly clericalDispatch = {
+    '=ECADR': this.onEqualsEcadrCard.bind(this),
     '=MINUS': this.onEqualsLikeCard.bind(this),
     '=PLUS': this.onEqualsLikeCard.bind(this),
     BANK: this.onBankCard.bind(this),
@@ -56,6 +57,7 @@ export class Pass1Assembler {
   private cells: Cells
   private urlBase: string
   private locationCounter: number | undefined
+  private hadLocationCounter: boolean
 
   /**
    * Runs this assembler on the specified URL, which typically points to a MAIN.agc yaYUL formatted file.
@@ -72,6 +74,7 @@ export class Pass1Assembler {
     this.cards = []
     this.cells = new Cells()
     this.urlBase = mainUrl.substring(0, index)
+    this.hadLocationCounter = false
 
     const parser = new parse.Parser()
     let symbolTable: Pass2SymbolTable
@@ -188,6 +191,17 @@ export class Pass1Assembler {
 
   private setLocationCounter (newLocationCounter: number | undefined): void {
     this.locationCounter = newLocationCounter
+    this.hadLocationCounter = true
+  }
+
+  private validateLocationCounter (counter: number | undefined, assembled: AssembledCard): counter is number {
+    if (counter !== undefined) {
+      return true
+    }
+    if (!this.hadLocationCounter) {
+      getCusses(assembled).add(cusses.Cuss27, 'Location not yet set')
+    }
+    return false
   }
 
   private assignCells (assembled: AssembledCard): void {
@@ -359,7 +373,7 @@ export class Pass1Assembler {
       } else {
         if (card.address.offset === undefined) {
           extent = card.address.value.value + 1
-        } else if (this.locationCounter !== undefined) {
+        } else if (this.validateLocationCounter(this.locationCounter, assembled)) {
           start = this.locationCounter + card.address.value.value
         } else {
           return
@@ -389,8 +403,13 @@ export class Pass1Assembler {
     }
   }
 
+  private onEqualsEcadrCard (card: parse.ClericalCard, assembled: AssembledCard): void {
+    // Address will be replaced in pass2, but need to flag it as having an address so it's processed in that pass.
+    assembled.refAddress = 0
+  }
+
   private onEqualsLikeCard (card: parse.ClericalCard, assembled: AssembledCard): void {
-    if (this.locationCounter !== undefined) {
+    if (this.validateLocationCounter(this.locationCounter, assembled)) {
       // Required for relative declarations
       assembled.refAddress = this.locationCounter
       if (card.address === undefined) {

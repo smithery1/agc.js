@@ -56,7 +56,9 @@ export function printTable<Entry> (
 
   if (tableData.reflowLastPage ?? true) {
     const lastPageRows = reflowLastPage()
-    printPage(lastPageRows)
+    if (lastPageRows > 0) {
+      printPage(lastPageRows)
+    }
   } else {
     while (currentRow > 0 || currentCol > 0) {
       output[currentRow][currentCol] = ''

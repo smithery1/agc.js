@@ -91,7 +91,7 @@ function parseOptions (argv: string[]): Options | undefined {
       if (val === 'All') {
         for (const section in EolSection) {
           const num = Number(section)
-          if (!isNaN(num)) {
+          if (!isNaN(num) && num !== EolSection.OctalCompact) {
             options.eol.add(num)
           }
         }
@@ -126,7 +126,7 @@ function usage (app: string): void {
   [-e|--eol <+-><section> [...]]
     Enables (+) or disables (-) a particular end-of-listing section.
     The sections will be printed at most once each, in the order given below.
-    The "All" option selects all sections.
+    The "All" option selects all sections except OctalCompact.
     The default is Cusses and Results.
     The section option must be one of the following.
       All, Listing, Cusses, Symbols, UndefinedSymbols, UnreferencedSymbols,

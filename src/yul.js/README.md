@@ -2,9 +2,9 @@
 
 This sub-project of agc.js is an attempt to write a JavaScript (actually TypeScript) assembler for the Block II Apollo Guidance Computer ("AGC") language that assembles the original mission software perfectly, and other software reasonably.
 
-The original assembler for the AGC software was named YUL[[1]](#1). It provided not only assembly services, but all sorts of information about the assembled software of interest to the programmers. It also generated manufacturing data in various forms. It could perform some basic simulation of the hardware for testing software routines, although more sophisticated simulation of the entire mission environment was left to another system.
+The original assembler for the AGC software was named YUL[[1]](#1). It provided assembly services and all sorts of information about the assembled software of interest to the programmers. It also generated manufacturing data in various forms and could perform some basic simulation of the hardware for testing software routines, although more sophisticated simulation of the entire mission environment was left to another system.
 
-YUL ran on a [Honeywell 800 Data Processing System](https://en.wikipedia.org/wiki/Honeywell_800) (and they sprang for the floating point unit.) Its input was a large collection of 80-column punch cards representing a mission software program. It assembled these to tape, and output various summary listings of the results to a printer. These first of these listings included the original source code in assembly listing form with the assembled binary word for each line.
+YUL ran on a [Honeywell 800 Data Processing System](https://en.wikipedia.org/wiki/Honeywell_800) (they sprang for the floating point unit.) Its input was a large collection of 80-column punch cards representing a mission software program. It assembled these to tape, and output various summary listings of the results to a printer. These first of these listings included the original source code in an assembly listing format with the assembled binary word for each line.
 
 The yul.js program is not an emulation of YUL, nor does it attempt to reproduce YUL's internals or behavior. It simply reads in source in yaYUL format (see below) and writes out assembled binary. For fun, however, it does mimic some of YUL's output.
 
@@ -14,9 +14,9 @@ The Virtual AGC project has digitized all manner of Apollo mission source code i
 
 The YUL punch card input was column based, and YUL used column ranges to identify fields. Whitespace was significant, and in theory identifiers could contain spaces, match instruction opcodes, and so on.
 
-For example, the text "CA +2" could represent the operator "CA" with operand "+2", or the legal symbol "CA +2". YUL would distinguish between the two cases based on the text's location on an input card. Fortunately the YUL documentation recommended against most of these practices, and the code itself doesn't seem to use them.
+For example, the text "CA +2" could represent the operator "CA" with operand "+2", or the legal symbol "CA +2". YUL would distinguish between the two cases based on the text's location on an input card. Fortunately the YUL documentation recommended against most of these practices, and the code itself doesn't seem to use them much.
 
-The yaYUL format uses spaces and eight character tabs to separate and align fields. Comments inserted by the Virtual AGC project begin with two has characters (##) and continue to the end of the line. These are typically annotations (i.e. page number) and information on the transcription history. Original source code comments (known to YUL as Remarks) begin with a single hash character (#) and continue to the end of the line. Lines beginning with a dollar character ($) contain the name of a file to insert textually at that point in the source. This is used to break the code into reasonable chunks based on the original Log Card information that categorized groups of input cards.
+The yaYUL format uses spaces and eight character tabs to separate and align fields. Comments inserted by the Virtual AGC project begin with two hash characters (##) and continue to the end of the line. These are typically annotations (i.e. page number) and information on the transcription history. Original source code comments (known to YUL as Remarks) begin with a single hash character (#) and continue to the end of the line. Lines beginning with a dollar character ($) contain the name of a file to insert textually at that point in the source. This is used to break the code into reasonable chunks based on the original Log Card information that categorized groups of input cards.
 
 In the spirit of the original YUL, yul.js uses column boundaries to identify fields on code lines.
 

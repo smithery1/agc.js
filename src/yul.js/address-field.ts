@@ -149,7 +149,8 @@ export function parse (
       if (input.charAt(input.length - 1) === 'D') {
         value = Number.parseInt(input.substring(0, input.length - 1), 10)
       } else {
-        // Should have a 'D'
+        // Ref YUL, 13-114. "If a numeric subfield contains character 8 or 9 but no D, it is considered to represent a
+        // decimal integer, but a complaint is printed."
         parseCusses.add(cusses.Cuss21)
         value = Number.parseInt(input.substring(0, input.length), 10)
       }

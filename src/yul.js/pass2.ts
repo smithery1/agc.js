@@ -48,9 +48,11 @@ export class Pass2Assembler {
   }
 
   private readonly clericalDispatch = {
+    '=ECADR': this.onEqualsEcadr.bind(this),
     '=MINUS': this.onEqualsLike.bind(this),
     '=PLUS': this.onEqualsLike.bind(this),
     BNKSUM: this.onBnkSum.bind(this),
+    'CHECK=': this.onCheckEquals.bind(this),
     COUNT: this.onCount.bind(this),
     'EBANK=': this.onEBankEquals.bind(this),
     EQUALS: this.onEqualsLike.bind(this),
@@ -661,8 +663,11 @@ export class Pass2Assembler {
       return
     }
     const channel = resolved.address
-    if (channel >= 0x20) {
-      getCusses(assembled).add(cusses.Cuss1E, 'Max channel is 37')
+    // Ref SYM, VC-3 says "bits 5-1 give the channel number", but Luminary 210 at least overflows this with a reference
+    // to channel 76(8).
+    // Accept 16 bits until we look into it more.
+    if (channel >= 0x100) {
+      getCusses(assembled).add(cusses.Cuss1E, 'Max channel is 377')
       return
     }
 
@@ -909,14 +914,52 @@ export class Pass2Assembler {
     this.oneShotSBank = bank
   }
 
+  private onCheckEquals (card: parse.ClericalCard, assembled: AssembledCard): void {
+    // Verified by parser
+    if (card.location === undefined) {
+      return
+    }
+    const location = this.output.symbolTable.resolve(card.location.symbol, assembled)
+    const trueAddress = this.resolve(card.address, assembled)
+    if (location === undefined || trueAddress === undefined) {
+      return
+    }
+
+    const address = trueAddress.address + trueAddress.offset
+    if (location !== address) {
+      getCusses(assembled).add(
+        cusses.Cuss35,
+        'Check mismatch',
+        'location = ' + addressing.asAssemblyString(location),
+        'address = ' + addressing.asAssemblyString(address))
+    }
+  }
+
+  private onEqualsEcadr (card: parse.ClericalCard, assembled: AssembledCard): void {
+    const resolved = this.resolve(card.address, assembled)
+    if (resolved !== undefined) {
+      if (!addressing.isErasable(addressing.memoryArea(resolved.address))) {
+        getCusses(assembled).add(
+          cusses.Cuss37, 'Not in erasable memory', 'Address=' + addressing.asAssemblyString(resolved.address))
+      } else {
+        assembled.refAddress = resolved.address + resolved.offset
+      }
+    }
+  }
+
   private onEqualsLike (card: parse.ClericalCard, assembled: AssembledCard): void {
-    // Required and verified by parser
     if (card.location !== undefined) {
       // For EQUALS, the location symbol resolves to the address field value.
       // For =MINUS and =PLUS, it resolves to a combination of the location counter and address field value.
       const resolved = this.output.symbolTable.resolveNoReference(card.location.symbol, assembled)
       if (resolved !== undefined) {
         assembled.refAddress = resolved
+      }
+    } else {
+      // EQUALS without a location symbol does nothing but print the value of the address field in the assembly listing.
+      const resolved = this.resolve(card.address, assembled)
+      if (resolved !== undefined) {
+        assembled.refAddress = resolved.address + resolved.offset
       }
     }
   }
