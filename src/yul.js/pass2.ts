@@ -919,7 +919,7 @@ export class Pass2Assembler {
     if (card.location === undefined) {
       return
     }
-    const location = this.output.symbolTable.resolve(card.location.symbol, assembled)
+    const location = this.output.symbolTable.resolveNoReference(card.location.symbol, assembled)
     const trueAddress = this.resolve(card.address, assembled)
     if (location === undefined || trueAddress === undefined) {
       return

@@ -28,6 +28,7 @@ const EMPTY_CELL_WORD = ' '.repeat(COLUMNS.CellWord)
 
 const COUNT_OP = ops.requireOperation('COUNT')
 const ERASE_OP = ops.requireOperation('ERASE')
+const EQECADR_OP = ops.requireOperation('=ECADR')
 
 export function printCuss (instance: cusses.CussInstance): void {
   const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
@@ -343,6 +344,13 @@ export function printCounts (printer: PrinterContext, pass2: Pass2Output, option
         currentCount.lastCount += card.extent
         currentCount.totalCount += card.extent
         currentCount.cumCount += card.extent
+      } else if (parse.isClerical(card.card) && card.card.operation.operation === EQECADR_OP) {
+        // Don't understand the =ECADR instruction yet, which is apparently a late addition to GAP.
+        // This is empirically correct per Luminary210 count data table, but we don't allocate any fixed memory for it
+        // and we still match on assembled binary data.
+        ++currentCount.lastCount
+        ++currentCount.totalCount
+        ++currentCount.cumCount
       }
       currentCount.lastPageEnd = page
     }
