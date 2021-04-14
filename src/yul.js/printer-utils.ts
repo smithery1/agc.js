@@ -1,24 +1,26 @@
 import { compat } from '../common/compat'
-import { asciiToEbcdic } from './ebcdic'
+import { Options } from './bootstrap'
+import { CharSet } from './charset'
+import * as cusses from './cusses'
+import { SymbolEntry } from './symbol-table'
 
-export function compareSymbolsEbcdic (str1: string, str2: string): number {
-  const length = Math.min(str1.length, str2.length)
+export interface PrintContext {
+  printer: PrinterContext
+  options: Options
+  charset: CharSet
+  sortedSymbolTable?: Array<[string, SymbolEntry]>
+}
 
-  for (let i = 0; i < length; i++) {
-    const ebcdic1 = asciiToEbcdic(str1.charCodeAt(i))
-    const ebcdic2 = asciiToEbcdic(str2.charCodeAt(i))
-
-    if (ebcdic1 > ebcdic2) {
-      return 1
-    } else if (ebcdic2 > ebcdic1) {
-      return -1
-    }
+export function printCuss (instance: cusses.CussInstance): void {
+  const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
+  compat.log(formattedSerial, instance.cuss.message)
+  if (instance.error !== undefined) {
+    compat.log('        ', instance.error.message)
   }
-
-  if (length === str1.length) {
-    return length === str2.length ? 0 : -1
-  } else {
-    return 1
+  if (instance.context !== undefined) {
+    instance.context.forEach(item => {
+      compat.log('        ', item)
+    })
   }
 }
 
@@ -67,7 +69,9 @@ export class PrinterContext {
   printHeader (): void {
     if (this.formatted) {
       const now = new Date()
-      const time = `${now.getHours()}:${now.getMinutes()} ${MONTHS[now.getMonth()]} ${now.getDate()},${now.getFullYear()}`
+      const hours = now.getHours().toString().padStart(2, '0')
+      const minutes = now.getMinutes().toString().padStart(2, '0')
+      const time = `${hours}:${minutes} ${MONTHS[now.getMonth()]} ${now.getDate()},${now.getFullYear()}`
       const occupied = LINE_LENGTH - 12 - this.header.length - time.length
       const spacing = ' '.repeat(Math.max(0, occupied))
 

@@ -562,7 +562,6 @@ addExtendedQc('AUG', 2, 2)
 addExtendedQc('DIM', 2, 3)
 addExtended('DCA', 3, BasicAddressRange.AnyMemory, 1)
 addExtended('DCS', 4, BasicAddressRange.AnyMemory, 1)
-// INDEX is defined as a non-extended, might need it here too?
 addExtendedQc('SU', 6, 0)
 addExtended('BZMF', 6, BasicAddressRange.FixedMemory)
 addExtended('MP', 7, BasicAddressRange.AnyMemory)

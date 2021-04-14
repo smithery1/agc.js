@@ -2,6 +2,7 @@ import { compat } from '../common/compat'
 import * as field from './address-field'
 import * as addressing from './addressing'
 import { AssembledCard, getCusses } from './assembly'
+import { Mode, Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType } from './lexer'
@@ -58,6 +59,9 @@ export class Pass1Assembler {
   private urlBase: string
   private locationCounter: number | undefined
   private hadLocationCounter: boolean
+
+  constructor (private readonly options: Options) {
+  }
 
   /**
    * Runs this assembler on the specified URL, which typically points to a MAIN.agc yaYUL formatted file.
@@ -280,8 +284,8 @@ export class Pass1Assembler {
     let bankNumber: number
     let sBank: number | undefined
 
-    // Ref SYM, III-8 makes no mention of this and it makes little if any practical difference with the mission source
-    // code, but empirically it seems than only BANK without an operand changes the SBANK setting.
+    // Ref SYM, III-8
+    // Note that only references to S3 and S4 change SBANK, references to non-superbank addresses leave it alone.
 
     if (card.address === undefined) {
       const fixed = addressing.fixedBankNumber(this.locationCounter ?? -1)
@@ -301,6 +305,14 @@ export class Pass1Assembler {
       if (bankNumber === 2 || bankNumber === 3) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
+      }
+
+      // The following differing YUL vs GAP behavior for BANK with an operand is empirical
+      // but works to compile all code.
+      // YUL: Behaves like BANK with no operand
+      // GAP: Leaves SBANK unchanged
+      if (this.options.mode === Mode.Yul) {
+        sBank = addressing.fixedBankNumberToBank(bankNumber)?.sBank
       }
     }
 
@@ -386,7 +398,7 @@ export class Pass1Assembler {
       }
 
       if (!canErase(addressing.memoryArea(start))
-        || !canErase(addressing.memoryArea(start + extent))) {
+        || !canErase(addressing.memoryArea(start + extent - 1))) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
       }
@@ -409,22 +421,22 @@ export class Pass1Assembler {
   }
 
   private onEqualsLikeCard (card: parse.ClericalCard, assembled: AssembledCard): void {
-    if (this.validateLocationCounter(this.locationCounter, assembled)) {
-      // Required for relative declarations
-      assembled.refAddress = this.locationCounter
-      if (card.address === undefined) {
+    // Required for relative declarations
+    assembled.refAddress = this.locationCounter
+    if (card.address === undefined) {
+      if (this.validateLocationCounter(this.locationCounter, assembled)) {
         this.symbolTable.assignAddress(card.location, assembled)
-      } else {
-        let offset: number
-        if (card.operation.operation === EQUALS_MINUS_OP) {
-          offset = -this.locationCounter
-        } else if (card.operation.operation === EQUALS_PLUS_OP) {
-          offset = this.locationCounter
-        } else {
-          offset = 0
-        }
-        this.symbolTable.assignField(card.location, card.address, offset, assembled)
       }
+    } else {
+      let offset = 0
+      if ((card.operation.operation === EQUALS_MINUS_OP || card.operation.operation === EQUALS_PLUS_OP)
+        && this.validateLocationCounter(this.locationCounter, assembled)) {
+        offset = this.locationCounter
+        if (card.operation.operation === EQUALS_MINUS_OP) {
+          offset = -offset
+        }
+      }
+      this.symbolTable.assignField(card.location, card.address, offset, assembled)
     }
   }
 }

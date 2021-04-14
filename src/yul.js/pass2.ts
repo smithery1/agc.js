@@ -32,6 +32,8 @@ interface BnkSum {
   readonly sumAddress: number
 }
 
+const INDEX_OP = ops.requireOperation('INDEX')
+
 /**
  * The pass 2 assembler.
  * - Calculates the binary value for each assigned memory cell
@@ -185,7 +187,6 @@ export class Pass2Assembler {
       if (check(bankAndAddress.bank.eBank !== this.eBank)) {
         getCusses(assembled).add(
           cusses.Cuss3A, 'Address=' + addressing.asAssemblyString(trueAddress), 'EBANK=' + this.eBank.toString())
-        return undefined
       }
     } else {
       const locationAddress = addressing.asSwitchedBankAndAddress(this.locationCounter)
@@ -197,7 +198,6 @@ export class Pass2Assembler {
           'Bank mismatch',
           'Address=' + addressing.asAssemblyString(trueAddress),
           'Location=' + addressing.asAssemblyString(this.locationCounter))
-        return undefined
       }
     }
 
@@ -241,7 +241,7 @@ export class Pass2Assembler {
     }
 
     this.setCell(word, resolved.offset, card.operation.complemented, assembled)
-    this.indexMode = card.operation.operation.symbol === 'INDEX'
+    this.indexMode = card.operation.operation === INDEX_OP
   }
 
   private basicAddress (card: parse.BasicInstructionCard, assembled: AssembledCard): field.TrueAddress | undefined {
@@ -256,7 +256,7 @@ export class Pass2Assembler {
     }
     const address = resolved.address + (operation.addressBias ?? 0)
 
-    // If previous instruction was INDEX, operand will be modified, presumable appropriately.
+    // If previous instruction was INDEX, operand will be modified, presumably appropriately.
     // Skip checking and just return the banked address.
     if (this.indexMode) {
       const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
@@ -273,17 +273,19 @@ export class Pass2Assembler {
       return undefined
     }
 
-    const addressType = addressing.memoryArea(address)
-
-    if (operation.addressRange === BasicAddressRange.FixedMemory) {
-      if (!addressing.isFixed(addressType)) {
-        getCusses(assembled).add(cusses.Cuss3A, 'Expected fixed but got ' + addressing.asAssemblyString(address))
-        return undefined
-      }
-    } else if (operation.addressRange === BasicAddressRange.ErasableMemory) {
-      if (!addressing.isErasable(addressType)) {
-        getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
-        return undefined
+    // The non-extended INDEX can only access erasable memory, which is what we have defined as the operation.
+    // The extended INDEX can access any memory.
+    if (operation !== INDEX_OP || !card.isExtended) {
+      if (operation.addressRange === BasicAddressRange.FixedMemory) {
+        const addressType = addressing.memoryArea(address)
+        if (!addressing.isFixed(addressType)) {
+          getCusses(assembled).add(cusses.Cuss3A, 'Expected fixed but got ' + addressing.asAssemblyString(address))
+        }
+      } else if (operation.addressRange === BasicAddressRange.ErasableMemory) {
+        const addressType = addressing.memoryArea(address)
+        if (!addressing.isErasable(addressType)) {
+          getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
+        }
       }
     }
 
@@ -351,7 +353,6 @@ export class Pass2Assembler {
     const address = resolved.address
     if (!addressing.isErasable(addressing.memoryArea(address))) {
       getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
-      return
     }
 
     let op = lhs.operation
@@ -601,7 +602,7 @@ export class Pass2Assembler {
         word = this.translateInterpretiveFixed(interpretive.operand, address, assembled)
       }
       if (indexableOperand) {
-        word += 1
+        ++word
       }
       if (card.address.indexRegister === 2) {
         compliment = true
@@ -781,6 +782,12 @@ export class Pass2Assembler {
       assembled.refAddress = undefined
       assembled.extent = 0
       this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: range.max })
+      return
+    } else if (address === range.min) {
+      // Do not checksum empty bank
+      assembled.assemblerContext = 'NO NEED'
+      assembled.refAddress = undefined
+      assembled.extent = 0
       return
     }
 

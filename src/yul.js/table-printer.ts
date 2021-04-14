@@ -5,7 +5,7 @@ import { PrinterContext } from './printer-utils'
 export interface TableData<Entry> {
   columns: number
   columnWidth: number
-  columnSeparator?: number
+  columnGap?: number
   rowsPerPage: number
   rowBreaks?: number
   pageHeader?: string[]
@@ -31,7 +31,7 @@ export function printTable<Entry> (
   for (let i = 0; i < output.length; i++) {
     output[i] = new Array<string>(columns)
   }
-  const columnSeparator = ' '.repeat(tableData.columnSeparator ?? 0)
+  const columnSeparator = ' '.repeat(tableData.columnGap ?? 0)
   const separator = '='.repeat(tableData.columnWidth) + columnSeparator
   const tableHeader = tableData.tableHeader === undefined
     ? undefined

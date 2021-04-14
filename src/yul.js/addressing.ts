@@ -64,6 +64,16 @@ export const TRUE_RANGE_VARIABLE_FIXED_2 = { min: 0x2000, max: 0x9FFF }
  */
 export const TRUE_RANGE_SUPERBANKS = { min: 0x7000, max: 0x9FFF }
 
+/**
+ * Superbank S3
+ */
+export const TRUE_RANGE_SUPERBANK_S3 = { min: 0x7000, max: 0x8FFF }
+
+/**
+ * Superbank S4
+ */
+export const TRUE_RANGE_SUPERBANK_S4 = { min: 0x9000, max: 0x9FFF }
+
 const TRUE_FIXED_BANKS = [
   // Banks 00-01
   { min: 0x1000, max: 0x13FF },

@@ -1,6 +1,6 @@
 import { argv } from 'process'
 import '../../common/node/compat-node'
-import assemble, { EolSection, Options } from '../bootstrap'
+import assemble, { EolSection, Mode, Options } from '../bootstrap'
 
 const options = parseOptions(argv)
 if (options !== undefined) {
@@ -11,15 +11,13 @@ function parseOptions (argv: string[]): Options | undefined {
   const app = argv.slice(0, 2).join(' ')
   const options: Options = {
     file: '',
-    eol: new Set(),
+    mode: Mode.Gap,
+    eol: [],
     tableText: true,
     tableColumnHeaders: true,
     formatted: true
   }
   let i = 2
-
-  options.eol.add(EolSection.Cusses)
-  options.eol.add(EolSection.Results)
 
   while (i < argv.length) {
     const option = argv[i++]
@@ -41,6 +39,16 @@ function parseOptions (argv: string[]): Options | undefined {
         options.formatted = false
         break
 
+      case '-g':
+      case '--gap':
+        options.mode = Mode.Gap
+        break
+
+      case '-y':
+      case '--yul':
+        options.mode = Mode.Yul
+        break
+
       default:
         if (options.file === '') {
           options.file = option
@@ -56,8 +64,13 @@ function parseOptions (argv: string[]): Options | undefined {
     return undefined
   }
 
-  if (options.eol.size === 1) {
+  if (options.eol.length === 1) {
     options.tableText = options.tableColumnHeaders = false
+  }
+
+  if (options.eol.length === 0) {
+    options.eol.push(EolSection.Cusses)
+    options.eol.push(EolSection.Results)
   }
 
   return options
@@ -89,33 +102,80 @@ function parseOptions (argv: string[]): Options | undefined {
 
     function addSection (val: string): boolean {
       if (val === 'All') {
-        for (const section in EolSection) {
-          const num = Number(section)
-          if (!isNaN(num) && num !== EolSection.OctalCompact) {
-            options.eol.add(num)
-          }
+        options.eol.push(EolSection.ListingWithCusses)
+        options.eol.push(EolSection.Symbols)
+        if (options.mode === Mode.Gap) {
+          options.eol.push(EolSection.UndefinedSymbols)
+          options.eol.push(EolSection.UnreferencedSymbols)
+          options.eol.push(EolSection.CrossReference)
         }
+        options.eol.push(EolSection.TableSummary)
+        if (options.mode === Mode.Yul) {
+          options.eol.push(EolSection.CrossReference)
+        }
+        options.eol.push(EolSection.MemorySummary)
+        if (options.mode === Mode.Gap) {
+          options.eol.push(EolSection.Count)
+          options.eol.push(EolSection.Paragraphs)
+          options.eol.push(EolSection.OctalListing)
+        }
+        options.eol.push(EolSection.Occupied)
+        if (options.mode === Mode.Yul) {
+          options.eol.push(EolSection.Paragraphs)
+          options.eol.push(EolSection.OctalListing)
+        }
+        options.eol.push(EolSection.Results)
       } else {
         const section = EolSection[val]
         if (section === undefined) {
           return false
         }
-        options.eol.add(section)
+        options.eol.push(section)
       }
       return true
     }
 
     function removeSection (val: string): boolean {
       if (val === 'All') {
-        options.eol.clear()
+        if (options.mode === Mode.Yul) {
+          remove(EolSection.ListingWithCusses)
+          remove(EolSection.Symbols)
+          remove(EolSection.UndefinedSymbols)
+          remove(EolSection.UnreferencedSymbols)
+          remove(EolSection.CrossReference)
+          remove(EolSection.TableSummary)
+          remove(EolSection.MemorySummary)
+          remove(EolSection.Count)
+          remove(EolSection.Paragraphs)
+          remove(EolSection.OctalListing)
+          remove(EolSection.Occupied)
+          remove(EolSection.Results)
+        } else {
+          remove(EolSection.ListingWithCusses)
+          remove(EolSection.Symbols)
+          remove(EolSection.TableSummary)
+          remove(EolSection.CrossReference)
+          remove(EolSection.MemorySummary)
+          remove(EolSection.Occupied)
+          remove(EolSection.Paragraphs)
+          remove(EolSection.OctalListing)
+          remove(EolSection.Results)
+        }
       } else {
         const section = EolSection[val]
         if (section === undefined) {
           return false
         }
-        options.eol.delete(section)
+        remove(section)
       }
       return true
+
+      function remove (section: EolSection): void {
+        const index = options.eol.lastIndexOf(section)
+        if (index >= 0) {
+          options.eol.splice(index, 1)
+        }
+      }
     }
   }
 }
@@ -125,17 +185,25 @@ function usage (app: string): void {
 `Usage: ${app} [options] <url>
   [-e|--eol <+-><section> [...]]
     Enables (+) or disables (-) a particular end-of-listing section.
-    The sections will be printed at most once each, in the order given below.
-    The "All" option selects all sections except OctalCompact.
-    The default is Cusses and Results.
-    The section option must be one of the following.
-      All, Listing, Cusses, Symbols, UndefinedSymbols, UnreferencedSymbols,
+    The enabled sections will be printed in the order given on the command
+    line. A disable (-) action removes the most recent addition of the
+    specified section.
+    The "All" option selects all sections output by the actual assembler for
+    the current mode (YUL or GAP) in the order they originally appeared.
+    If no "-e" option is given, Cusses and Results are output.
+    Each section must be one of the following.
+      All, Listing, Cusses, OctalCompact,
+      ListingWithCusses, Symbols, UndefinedSymbols, UnreferencedSymbols,
       CrossReference, TableSummary, MemorySummary, Count, Paragraphs,
-      OctalListing, OctalCompact, Occupied, Results
+      OctalListing, Occupied, Results
+  [-g|--gap]
+    Assembles and outputs using GAP rules. This is the default.
   [-h|--help]
     This help text
   [-u|--unformatted]
-    Outputs unformatted data, which is no page breaks or headers, with a single
-    column per end-of-listing table.
+    Outputs unformatted data: no page breaks or headers with a single
+    column per end-of-listing table
+  [-y|--yul]
+    Assembles and outputs using YUL rules
   `)
 }

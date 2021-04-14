@@ -1,12 +1,13 @@
 import { compat } from '../common/compat'
-import { EolSection, Options } from './bootstrap'
+import { EolSection, Mode, Options } from './bootstrap'
+import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
-import { printAssembly, printCounts, printCuss } from './print-assembly'
-import { printMemorySummary, printOccupied, printOctalListing, printOctalListingCompact, printParagraphs } from './print-cells'
-import { printSymbolTable } from './print-symbol-table'
-import { PrinterContext } from './printer-utils'
+import * as assembly from './print-assembly'
+import * as cells from './print-cells'
+import * as symbols from './print-symbol-table'
+import { PrintContext, printCuss, PrinterContext } from './printer-utils'
 
 /**
  * The assembler.
@@ -48,8 +49,26 @@ export default class Assembler {
   private readonly pass1: Pass1Assembler
   private readonly pass2: Pass2Assembler
 
-  constructor () {
-    this.pass1 = new Pass1Assembler()
+  private readonly sectionDispatch = {
+    [EolSection.Cusses]: assembly.printCusses,
+    [EolSection.Listing]: assembly.printListing,
+    [EolSection.ListingWithCusses]: assembly.printListingWithCusses,
+    [EolSection.Symbols]: symbols.printSymbols,
+    [EolSection.UndefinedSymbols]: symbols.printUndefinedSymbols,
+    [EolSection.UnreferencedSymbols]: symbols.printUnreferencedSymbols,
+    [EolSection.CrossReference]: symbols.printCrossReference,
+    [EolSection.TableSummary]: symbols.printTableSummary,
+    [EolSection.MemorySummary]: cells.printMemorySummary,
+    [EolSection.Count]: assembly.printCounts,
+    [EolSection.Paragraphs]: cells.printParagraphs,
+    [EolSection.OctalListing]: cells.printOctalListing,
+    [EolSection.OctalCompact]: cells.printOctalListingCompact,
+    [EolSection.Occupied]: cells.printOccupied,
+    [EolSection.Results]: printResults
+  }
+
+  constructor (options: Options) {
+    this.pass1 = new Pass1Assembler(options)
     this.pass2 = new Pass2Assembler()
   }
 
@@ -67,7 +86,7 @@ export default class Assembler {
         return false
       }
       const pass2Result = this.pass2.assemble(pass1Result)
-      this.printListing(options, pass2Result)
+      this.printOutput(options, pass2Result)
       return pass2Result.fatalCussCount === 0
     } catch (error) {
       compat.log(error.stack)
@@ -75,39 +94,22 @@ export default class Assembler {
     }
   }
 
-  private printListing (options: Options, pass2: Pass2Output): void {
+  private printOutput (options: Options, pass2: Pass2Output): void {
     const program = getProgram(options.file)
     const user = compat.username()
     const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
+    const charset = getCharset(options.mode === Mode.Yul ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
+    const context: PrintContext = {
+      options,
+      printer,
+      charset
+    }
 
-    if (options.formatted && options.eol.size > 1) {
+    if (options.formatted && options.eol.length > 1) {
       printer.printHeader()
     }
-    if (options.eol.has(EolSection.Listing) || options.eol.has(EolSection.Cusses)) {
-      printAssembly(printer, pass2, options)
-    }
-    printSymbolTable(printer, pass2.symbolTable, options)
-    if (options.eol.has(EolSection.MemorySummary)) {
-      printMemorySummary(printer, pass2.cells, options)
-    }
-    if (options.eol.has(EolSection.Count)) {
-      printCounts(printer, pass2, options)
-    }
-    if (options.eol.has(EolSection.Paragraphs)) {
-      printParagraphs(printer, pass2.cells, options)
-    }
-    if (options.eol.has(EolSection.OctalListing)) {
-      printOctalListing(printer, pass2.cells, options)
-    }
-    if (options.eol.has(EolSection.OctalCompact)) {
-      printOctalListingCompact(printer, pass2.cells, options)
-    }
-    if (options.eol.has(EolSection.Occupied)) {
-      printOccupied(printer, pass2.cells, options)
-    }
-    if (options.eol.has(EolSection.Results)) {
-      this.printResults(printer, pass2)
-    }
+
+    options.eol.forEach(section => this.sectionDispatch[section](pass2, context))
 
     function getProgram (mainUrl: string): string {
       const url = new URL(mainUrl)
@@ -121,56 +123,6 @@ export default class Assembler {
       return programMatch[1]
     }
   }
-
-  // Not quite exact, but in the spirit of Ref https://www.ibiblio.org/apollo/YUL/01%20-%20Intro/yul-0013.jpg
-  private printResults (printer: PrinterContext, pass2: Pass2Output): void {
-    let result: string
-    let manufacturable = ''
-
-    if (pass2.fatalCussCount > 999) {
-      result = FATAL_MAX
-    } else {
-      const symbolTableSize = pass2.symbolTable.getTable().size.toString(8)
-      const symbolTableUnits = symbolTableSize.charAt(symbolTableSize.length - 1)
-      const lastCodePage = pass2.cards[pass2.cards.length - 1].lexedLine.sourceLine.page.toString()
-      const lastCodePageUnits = lastCodePage.charAt(lastCodePage.length - 1)
-      let list: number
-      if ((inSet(symbolTableUnits) && !inSet(lastCodePageUnits))
-        || (!inSet(symbolTableUnits) && inSet(lastCodePageUnits))) {
-        list = 0
-      } else {
-        list = 1
-      }
-
-      let quality: string[]
-      if (pass2.fatalCussCount === 0 && pass2.nonFatalCussCount === 0) {
-        quality = NO_CUSSES
-        manufacturable = ' AND MANUFACTURABLE'
-      } else if (pass2.fatalCussCount === 0) {
-        quality = NON_FATAL
-        manufacturable = ' AND MANUFACTURABLE'
-      } else if (pass2.fatalCussCount <= 2) {
-        quality = FATAL_1
-      } else if (pass2.fatalCussCount <= 9) {
-        quality = FATAL_2
-      } else if (pass2.fatalCussCount <= 99) {
-        quality = FATAL_3
-      } else {
-        quality = FATAL_4
-      }
-
-      result = quality[list]
-    }
-
-    const totalCusses = pass2.fatalCussCount + pass2.nonFatalCussCount
-    const cussed = totalCusses === 0 ? 'NO ' : totalCusses.toString()
-    printer.println(`ASSEMBLY WAS ${result}${manufacturable}. ${cussed} LINES WERE CUSSED.`)
-    printer.endPage()
-
-    function inSet (digit: string): boolean {
-      return digit === '2' || digit === '3' || digit === '6' || digit === '7'
-    }
-  }
 }
 
 const NO_CUSSES = ['GOOD', 'SUPERB']
@@ -180,3 +132,53 @@ const FATAL_2 = ['LOUSY', 'AWFUL']
 const FATAL_3 = ['ROTTEN', 'VILE']
 const FATAL_4 = ['BILIOUS', 'PUTRID']
 const FATAL_MAX = 'YUCCCHHHH'
+
+// Not quite exact, but in the spirit of Ref https://www.ibiblio.org/apollo/YUL/01%20-%20Intro/yul-0013.jpg
+function printResults (pass2: Pass2Output, context: PrintContext): void {
+  let result: string
+  let manufacturable = ''
+
+  if (pass2.fatalCussCount > 999) {
+    result = FATAL_MAX
+  } else {
+    const symbolTableSize = pass2.symbolTable.getTable().size.toString(8)
+    const symbolTableUnits = symbolTableSize.charAt(symbolTableSize.length - 1)
+    const lastCodePage = pass2.cards[pass2.cards.length - 1].lexedLine.sourceLine.page.toString()
+    const lastCodePageUnits = lastCodePage.charAt(lastCodePage.length - 1)
+    let list: number
+    if ((inSet(symbolTableUnits) && !inSet(lastCodePageUnits))
+      || (!inSet(symbolTableUnits) && inSet(lastCodePageUnits))) {
+      list = 0
+    } else {
+      list = 1
+    }
+
+    let quality: string[]
+    if (pass2.fatalCussCount === 0 && pass2.nonFatalCussCount === 0) {
+      quality = NO_CUSSES
+      manufacturable = ' AND MANUFACTURABLE'
+    } else if (pass2.fatalCussCount === 0) {
+      quality = NON_FATAL
+      manufacturable = ' AND MANUFACTURABLE'
+    } else if (pass2.fatalCussCount <= 2) {
+      quality = FATAL_1
+    } else if (pass2.fatalCussCount <= 9) {
+      quality = FATAL_2
+    } else if (pass2.fatalCussCount <= 99) {
+      quality = FATAL_3
+    } else {
+      quality = FATAL_4
+    }
+
+    result = quality[list]
+  }
+
+  const totalCusses = pass2.fatalCussCount + pass2.nonFatalCussCount
+  const cussed = totalCusses === 0 ? 'NO ' : totalCusses.toString()
+  context.printer.println(`ASSEMBLY WAS ${result}${manufacturable}. ${cussed} LINES WERE CUSSED.`)
+  context.printer.endPage()
+
+  function inSet (digit: string): boolean {
+    return digit === '2' || digit === '3' || digit === '6' || digit === '7'
+  }
+}

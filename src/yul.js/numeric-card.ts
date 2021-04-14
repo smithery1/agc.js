@@ -295,15 +295,18 @@ function numericParts (token: string, isExtended: boolean): Parts | cusses.Cuss 
     }
 
     ++index
+    skipWhitespace()
     let positive: boolean
     let char = token.charAt(index)
     if (char === '-') {
       positive = false
       ++index
+      skipWhitespace()
     } else {
       positive = true
       if (char === '+') {
         ++index
+        skipWhitespace()
       }
     }
 
@@ -333,6 +336,12 @@ function numericParts (token: string, isExtended: boolean): Parts | cusses.Cuss 
     }
 
     return exp
+  }
+
+  function skipWhitespace (): void {
+    while (index < token.length && isWhitespace(token.charAt(index))) {
+      ++index
+    }
   }
 }
 

@@ -81,6 +81,7 @@ export interface BasicInstructionCard extends AssemblyCard {
   readonly type: CardType.Basic
   readonly operation: OperationField<ops.Basic>
   readonly address?: field.AddressField
+  readonly isExtended: boolean
 }
 
 /**
@@ -135,35 +136,39 @@ export interface ClericalCard extends AssemblyCard {
 }
 
 export function isAddressConstant (card: any): card is AddressConstantCard {
-  return cardIsOfType(card, ops.Type.Address)
+  return cardIsOfType(card, CardType.Address)
 }
 
 export function isBasic (card: any): card is BasicInstructionCard {
-  return cardIsOfType(card, ops.Type.Basic)
+  return cardIsOfType(card, CardType.Basic)
 }
 
 export function isClerical (card: any): card is ClericalCard {
-  return cardIsOfType(card, ops.Type.Clerical)
+  return cardIsOfType(card, CardType.Clerical)
 }
 
 export function isInterpretive (card: any): card is InterpretiveInstructionCard {
-  return cardIsOfType(card, ops.Type.Interpretive)
+  return cardIsOfType(card, CardType.Interpretive)
 }
 
 export function isNumericConstant (card: any): card is NumericConstantCard {
-  return cardIsOfType(card, ops.Type.Numeric)
+  return cardIsOfType(card, CardType.Numeric)
 }
 
 export function isInsertion (card: any): card is InsertionCard {
-  return 'file' in (card ?? {})
+  return cardIsOfType(card, CardType.Insertion)
 }
 
 export function isRemark (card: any): card is RemarkCard {
-  return 'fullLine' in (card ?? {})
+  return cardIsOfType(card, CardType.Remark)
 }
 
-function cardIsOfType (card: any, type: ops.Type): boolean {
-  return 'operation' in (card ?? {}) && (card.operation as OperationField).operation.type === type
+export function hasAddressField (card: any): card is AddressConstantCard | BasicInstructionCard | ClericalCard {
+  return isBasic(card) || isClerical(card) || isAddressConstant(card)
+}
+
+export function cardIsOfType (card: any, type: CardType): boolean {
+  return 'type' in (card ?? {}) && card.type === type
 }
 
 /**
@@ -274,9 +279,13 @@ export class Parser {
         this.page = lexed.sourceLine.page
       }
       if (lexed.type === LineType.Insertion) {
-        yield { lexedLine: lexed, card: { file: lexed.field1 }, cusses: localCusses }
+        yield { lexedLine: lexed, card: { type: CardType.Insertion, file: lexed.field1 }, cusses: localCusses }
       } else if (lexed.type === LineType.Remark) {
-        yield { lexedLine: lexed, card: { fullLine: lexed.field1 === undefined }, cusses: localCusses }
+        yield {
+          lexedLine: lexed,
+          cusses: localCusses,
+          card: { type: CardType.Remark, fullLine: lexed.field1 === undefined }
+        }
       } else if (lexed.type === LineType.Pagination) {
         yield { lexedLine: lexed, cusses: localCusses }
       } else {
@@ -292,7 +301,7 @@ export class Parser {
 
   private parseCard (lexedLine: LexedLine): ParsedLine {
     if (lexedLine.field1 !== undefined && lexedLine.field2 === undefined && lexedLine.field3 === undefined) {
-      this.cardCusses.add(cusses.Cuss41)
+      this.cardCusses.add(cusses.Cuss41, 'Operation field is blank')
       return { lexedLine }
     }
 
@@ -302,7 +311,7 @@ export class Parser {
     const operationField = lexedLine.field2 === undefined ? '' : lexedLine.field2
     const parsedOp = this.parseOp(operationField)
     if (cusses.isCuss(parsedOp)) {
-      this.cardCusses.add(parsedOp)
+      this.cardCusses.add(parsedOp, operationField)
       return { lexedLine }
     }
 
@@ -546,7 +555,8 @@ export class Parser {
       type: CardType.Basic,
       location: input.location,
       operation: { operation: input.parsedOp.op, complemented: input.parsedOp.complimented, indexed: false },
-      address
+      address,
+      isExtended: input.parsedOp.op !== EXTEND_OP && this.isExtended
     }
     return { lexedLine: input.lexedLine, card }
   }
@@ -568,7 +578,7 @@ export class Parser {
     if (operand !== undefined) {
       const parsedOp = this.parseOp(operand)
       if (cusses.isCuss(parsedOp) || parsedOp.op.type !== ops.Type.Interpretive) {
-        this.cardCusses.add(cusses.Cuss15)
+        this.cardCusses.add(cusses.Cuss15, operand)
       } else {
         rhsOperand = parsedOp as ParsedOp<ops.Interpretive>
         this.validateInterpretiveOp(rhsOperand)
