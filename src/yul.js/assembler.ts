@@ -1,5 +1,5 @@
 import { compat } from '../common/compat'
-import { EolSection, Mode, Options } from './bootstrap'
+import { EolSection, isStderrSection, Mode, Options } from './bootstrap'
 import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
 import { Pass1Assembler } from './pass1'
@@ -69,7 +69,7 @@ export default class Assembler {
 
   constructor (options: Options) {
     this.pass1 = new Pass1Assembler(options)
-    this.pass2 = new Pass2Assembler()
+    this.pass2 = new Pass2Assembler(options)
   }
 
   /**
@@ -109,7 +109,12 @@ export default class Assembler {
       printer.printHeader()
     }
 
-    options.eol.forEach(section => this.sectionDispatch[section](pass2, context))
+    options.eol.forEach(section => {
+      const type = isStderrSection(section)
+      printer.stderr(type.isStderr)
+      this.sectionDispatch[type.section](pass2, context)
+    })
+    printer.stderr(false)
 
     function getProgram (mainUrl: string): string {
       const url = new URL(mainUrl)

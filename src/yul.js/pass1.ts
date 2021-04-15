@@ -2,7 +2,7 @@ import { compat } from '../common/compat'
 import * as field from './address-field'
 import * as addressing from './addressing'
 import { AssembledCard, getCusses } from './assembly'
-import { Mode, Options } from './bootstrap'
+import { Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType } from './lexer'
@@ -308,10 +308,10 @@ export class Pass1Assembler {
       }
 
       // The following differing YUL vs GAP behavior for BANK with an operand is empirical
-      // but works to compile all code.
-      // YUL: Behaves like BANK with no operand
-      // GAP: Leaves SBANK unchanged
-      if (this.options.mode === Mode.Yul) {
+      // but required to compile Sunburst120.
+      // YUL 67: Behaves like BANK with no operand
+      // Others: Leaves SBANK unchanged
+      if (this.options.yulVersion === 67) {
         sBank = addressing.fixedBankNumberToBank(bankNumber)?.sBank
       }
     }

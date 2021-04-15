@@ -26,10 +26,20 @@ export enum EolSection {
 export interface Options {
   file: string
   mode: Mode
+  yulVersion: number
   eol: EolSection[]
-  tableText: boolean
-  tableColumnHeaders: boolean
   formatted: boolean
+}
+
+export function asStderrSection (section: EolSection, isStderr: boolean): number {
+  return isStderr ? (section | 0x100) : section
+}
+
+export function isStderrSection (section: EolSection): { section: EolSection, isStderr: boolean } {
+  if ((section & 0x100) > 0) {
+    return { section: (section & 0xFF), isStderr: true }
+  }
+  return { section, isStderr: false }
 }
 
 /**

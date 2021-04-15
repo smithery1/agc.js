@@ -1,6 +1,6 @@
 import { argv } from 'process'
 import '../../common/node/compat-node'
-import assemble, { EolSection, Mode, Options } from '../bootstrap'
+import assemble, { asStderrSection, EolSection, Mode, Options } from '../bootstrap'
 
 const options = parseOptions(argv)
 if (options !== undefined) {
@@ -12,9 +12,8 @@ function parseOptions (argv: string[]): Options | undefined {
   const options: Options = {
     file: '',
     mode: Mode.Gap,
+    yulVersion: 0,
     eol: [],
-    tableText: true,
-    tableColumnHeaders: true,
     formatted: true
   }
   let i = 2
@@ -47,6 +46,9 @@ function parseOptions (argv: string[]): Options | undefined {
       case '-y':
       case '--yul':
         options.mode = Mode.Yul
+        if (!parseYul()) {
+          return undefined
+        }
         break
 
       default:
@@ -64,13 +66,9 @@ function parseOptions (argv: string[]): Options | undefined {
     return undefined
   }
 
-  if (options.eol.length === 1) {
-    options.tableText = options.tableColumnHeaders = false
-  }
-
   if (options.eol.length === 0) {
-    options.eol.push(EolSection.Cusses)
-    options.eol.push(EolSection.Results)
+    options.eol.push(asStderrSection(EolSection.Cusses, true))
+    options.eol.push(asStderrSection(EolSection.Results, false))
   }
 
   return options
@@ -85,7 +83,11 @@ function parseOptions (argv: string[]): Options | undefined {
           break
         }
       } else if (enableDisable === '+') {
-        if (!addSection(sectionArg.substring(1))) {
+        if (!addSection(sectionArg.substring(1), false)) {
+          break
+        }
+      } else if (enableDisable === '*') {
+        if (!addSection(sectionArg.substring(1), true)) {
           break
         }
       } else {
@@ -100,39 +102,43 @@ function parseOptions (argv: string[]): Options | undefined {
     }
     return !isFirst
 
-    function addSection (val: string): boolean {
+    function addSection (val: string, isStderr: boolean): boolean {
       if (val === 'All') {
-        options.eol.push(EolSection.ListingWithCusses)
-        options.eol.push(EolSection.Symbols)
+        add(EolSection.ListingWithCusses)
+        add(EolSection.Symbols)
         if (options.mode === Mode.Gap) {
-          options.eol.push(EolSection.UndefinedSymbols)
-          options.eol.push(EolSection.UnreferencedSymbols)
-          options.eol.push(EolSection.CrossReference)
+          add(EolSection.UndefinedSymbols)
+          add(EolSection.UnreferencedSymbols)
+          add(EolSection.CrossReference)
         }
-        options.eol.push(EolSection.TableSummary)
+        add(EolSection.TableSummary)
         if (options.mode === Mode.Yul) {
-          options.eol.push(EolSection.CrossReference)
+          add(EolSection.CrossReference)
         }
-        options.eol.push(EolSection.MemorySummary)
+        add(EolSection.MemorySummary)
         if (options.mode === Mode.Gap) {
-          options.eol.push(EolSection.Count)
-          options.eol.push(EolSection.Paragraphs)
-          options.eol.push(EolSection.OctalListing)
+          add(EolSection.Count)
+          add(EolSection.Paragraphs)
+          add(EolSection.OctalListing)
         }
-        options.eol.push(EolSection.Occupied)
+        add(EolSection.Occupied)
         if (options.mode === Mode.Yul) {
-          options.eol.push(EolSection.Paragraphs)
-          options.eol.push(EolSection.OctalListing)
+          add(EolSection.Paragraphs)
+          add(EolSection.OctalListing)
         }
-        options.eol.push(EolSection.Results)
+        add(EolSection.Results)
       } else {
         const section = EolSection[val]
         if (section === undefined) {
           return false
         }
-        options.eol.push(section)
+        add(section)
       }
       return true
+
+      function add (section: EolSection): void {
+        options.eol.push(asStderrSection(section, isStderr))
+      }
     }
 
     function removeSection (val: string): boolean {
@@ -171,12 +177,30 @@ function parseOptions (argv: string[]): Options | undefined {
       return true
 
       function remove (section: EolSection): void {
-        const index = options.eol.lastIndexOf(section)
+        const index1 = options.eol.lastIndexOf(asStderrSection(section, false))
+        const index2 = options.eol.lastIndexOf(asStderrSection(section, true))
+        const index = Math.max(index1, index2)
         if (index >= 0) {
           options.eol.splice(index, 1)
         }
       }
     }
+  }
+
+  function parseYul (): boolean {
+    if (i === argv.length) {
+      console.error('Missing yul argument')
+      return false
+    }
+
+    const version = Number.parseInt(argv[i++], 10)
+    if (version === 66 || version === 67) {
+      options.yulVersion = version
+      return true
+    }
+
+    console.error('Invalid yul argument')
+    return false
   }
 }
 
@@ -184,26 +208,29 @@ function usage (app: string): void {
   console.error(
 `Usage: ${app} [options] <url>
   [-e|--eol <+-><section> [...]]
-    Enables (+) or disables (-) a particular end-of-listing section.
-    The enabled sections will be printed in the order given on the command
-    line. A disable (-) action removes the most recent addition of the
-    specified section.
+    Enables (+), disables (-), or enables on stderr (*) a particular end-of-
+    listing section. The enabled sections will be printed in the order given on
+    the command line. A disable (-) action removes the most recent addition of
+    the specified section.
     The "All" option selects all sections output by the actual assembler for
     the current mode (YUL or GAP) in the order they originally appeared.
-    If no "-e" option is given, Cusses and Results are output.
+    If no "-e" option is given, output is Cusses on stderr and Results.
     Each section must be one of the following.
-      All, Listing, Cusses, OctalCompact,
-      ListingWithCusses, Symbols, UndefinedSymbols, UnreferencedSymbols,
-      CrossReference, TableSummary, MemorySummary, Count, Paragraphs,
-      OctalListing, Occupied, Results
+      All, Listing, Cusses, ListingWithCusses,
+      Symbols, UndefinedSymbols, UnreferencedSymbols, CrossReference,
+      TableSummary, MemorySummary, Count, Paragraphs,
+      OctalListing, OctalCompact, Occupied, Results
   [-g|--gap]
     Assembles and outputs using GAP rules. This is the default.
   [-h|--help]
     This help text
   [-u|--unformatted]
-    Outputs unformatted data: no page breaks or headers with a single
-    column per end-of-listing table
-  [-y|--yul]
-    Assembles and outputs using YUL rules
+    Outputs unformatted data: no page breaks or headers and a single
+    set of columns per end-of-listing table
+  [-y|--yul <version>]
+    Assembles and outputs using YUL rules for the specific YUL version.
+    Versions are:
+      66 Suitable for Sunburst37. Positive bank number based bugger words.
+      67 Suitable for Sunburst120. BANK with an operand updates SBANK.
   `)
 }

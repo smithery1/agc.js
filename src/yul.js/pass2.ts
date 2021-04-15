@@ -1,6 +1,7 @@
 import * as field from './address-field'
 import * as addressing from './addressing'
 import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses } from './assembly'
+import { Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import * as ops from './operations'
@@ -38,7 +39,7 @@ const INDEX_OP = ops.requireOperation('INDEX')
  * The pass 2 assembler.
  * - Calculates the binary value for each assigned memory cell
  * - Generates BNKSUM TC operations and checksums
- * - Tracks EBANK= and SBANK= settings, and validates against them.
+ * - Tracks EBANK= and SBANK= settings, and validates against them
  */
 export class Pass2Assembler {
   private readonly cardDispatch = {
@@ -90,6 +91,9 @@ export class Pass2Assembler {
   private sBank: number
   private oneShotSBank: number | undefined
   private count: AssembledCard | undefined
+
+  constructor (private readonly options: Options) {
+  }
 
   /**
    * Runs this assembler on the specified pass 1 output.
@@ -845,7 +849,8 @@ export class Pass2Assembler {
       // "The check sum word is formed by the assembler in such a way as to give it the smaller of its two possible
       // magnitudes..."
       // Meaning the checksum has the same sign as the sum, including -0 if necessary.
-      if (sum < 0) {
+      // This works most of the time, but old code (Sunburst37 aka YUL 66) appears to always use a positive bank number.
+      if (sum < 0 && this.options.yulVersion !== 66) {
         checksum = -bnkSum.bank - sum
         if (checksum === 0) {
           // Special case for -0
@@ -894,6 +899,11 @@ export class Pass2Assembler {
       bank = bankAndAddress.bank.eBank
     }
 
+    // If multiple EBANK= statements in a row, only the last is single-shot.
+    if (this.oneShotEBank !== undefined) {
+      this.eBank = this.oneShotEBank
+    }
+
     assembled.refAddress = address
     this.oneShotEBank = bank
   }
@@ -915,6 +925,11 @@ export class Pass2Assembler {
         return
       }
       bank = bankAndAddress.bank.sBank
+    }
+
+    // If multiple SBANK= statements in a row, only the last is single-shot.
+    if (this.oneShotSBank !== undefined) {
+      this.sBank = this.oneShotSBank
     }
 
     assembled.refAddress = address

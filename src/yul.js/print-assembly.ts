@@ -257,7 +257,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
         return ' ' + highDigit.toString(8) + ' ' + lowDigits.toString(8).padStart(4, '0')
       } else {
         const highDigits = (word & 0x7E00) >> 9
-        const lowDigits = word & 0xFF
+        const lowDigits = word & 0x1FF
 
         return ' ' + highDigits.toString(8).padStart(2, '0') + ' ' + lowDigits.toString(8).padStart(3, '0')
       }

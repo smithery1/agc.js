@@ -34,6 +34,7 @@ const MONTHS = [
 export class PrinterContext {
   private readonly header: string
   private readonly formatted: boolean
+  private output: (...data: any[]) => void
   private pageDirty = false
   private pageBreak = false
   private page = 1
@@ -43,17 +44,26 @@ export class PrinterContext {
     const spacing = ' '.repeat(Math.max(0, 78 - header.length))
     this.header = header + spacing
     this.formatted = formatted
+    this.output = compat.output
+  }
+
+  stderr (isStderr: boolean): void {
+    if (isStderr) {
+      this.output = compat.error
+    } else {
+      this.output = compat.output
+    }
   }
 
   println (...data: any[]): void {
     if (this.pageBreak) {
       this.pageBreak = false
-      compat.output('')
-      compat.output(PAGE_BREAK)
+      this.output('')
+      this.output(PAGE_BREAK)
       this.printHeader()
     }
-    if (this.formatted || data.length !== 1 || data[0] === '') {
-      compat.output(...data)
+    if (this.formatted || data.length !== 1 || data[0] !== '') {
+      this.output(...data)
       this.pageDirty = true
     }
   }
@@ -75,8 +85,8 @@ export class PrinterContext {
       const occupied = LINE_LENGTH - 12 - this.header.length - time.length
       const spacing = ' '.repeat(Math.max(0, occupied))
 
-      compat.output(this.header, time, spacing, 'PAGE', this.page.toString().padStart(4))
-      compat.output('')
+      this.output(this.header, time, spacing, 'PAGE', this.page.toString().padStart(4))
+      this.output('')
     }
   }
 }

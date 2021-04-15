@@ -152,7 +152,7 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
     }
     if (row >= rowsPerPage) {
       context.printer.endPage()
-      if (context.options.tableText && (context.options.formatted || row === 0)) {
+      if (context.options.formatted) {
         context.printer.println(header)
         context.printer.println('')
       }
@@ -222,7 +222,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
     }
 
     context.printer.endPage()
-    if (context.options.formatted && context.options.tableText) {
+    if (context.options.formatted) {
       context.printer.println(
         `OCTAL LISTING ${ofFor} PARAGRAPH #`,
         paragraph.toString(8).padStart(OCTAL_LISTING_COLUMNS.Paragraph, '0') + ',',
@@ -303,7 +303,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
 export function printOctalListingCompact (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
 
-  if (context.options.tableColumnHeaders) {
+  if (context.options.formatted) {
     context.printer.println('OCTAL COMPACT LISTING - ADDRESS 0 1 2 3 4 5 6 7')
   }
 

@@ -79,11 +79,11 @@ export function printTable<Entry> (
   function printPage (rows?: number): void {
     printer.endPage()
     if (options.formatted || page === 0) {
-      if (options.tableText && tableData.pageHeader !== undefined) {
+      if (options.formatted && tableData.pageHeader !== undefined) {
         tableData.pageHeader.forEach(header => printer.println(header))
         printer.println('')
       }
-      if (options.tableColumnHeaders && tableHeader !== undefined) {
+      if (options.formatted && tableHeader !== undefined) {
         printer.println(tableHeader)
         printer.println('')
       }
@@ -100,7 +100,7 @@ export function printTable<Entry> (
       return --rowsLeft > 0
     })
 
-    if (options.formatted && options.tableText && tableData.pageFooter !== undefined) {
+    if (options.formatted && tableData.pageFooter !== undefined) {
       printer.println('')
       tableData.pageFooter.forEach(footer => printer.println(footer))
     }

@@ -54,12 +54,12 @@ The primary intent of yul.js is to assemble the original mission software code. 
 
 The program current runs under node.js.
 
-1. Download node.js for your OS from [here](https://nodejs.org/en/download/).
+1. Install node.js for your OS from [here](https://nodejs.org/en/download/).
 1. Install the Typescript compiler
 
         % npm install -g typescript
 
-1. Download git for your OS from [here](https://git-scm.com/downloads).
+1. Install git for your OS from [here](https://git-scm.com/downloads).
 1. Clone the agc.js repo into a local directory. For example, run the following.
 
         % git clone git@github.com:smithery1/agc.js.git
@@ -76,17 +76,17 @@ The program current runs under node.js.
 
         % node agc.js/build/yul.js/node/index-node.js virtualagc/Luminary099/MAIN.agc
 
-1. Same assembly, but output all the GAP end-of-listing tables to stdout.
+    1. Same assembly, but output all the GAP end-of-listing tables to stdout.
 
         % node agc.js/build/yul.js/node/index-node.js -e +All virtualagc/Luminary099/MAIN.agc
 
-1. Show command-line options available to control the behavior and output.
+    1. Show command-line options available to control the behavior and output.
 
         % node agc.js/build/yul.js/node/index-node.js -h
 
 ## References
-<a id="1">[1]</a>"Apollo Guidance Computer Information Series Issue 13: YUL Programming System", MIT Instrumentation Laboratory, Cambridge, MA, FR-2-113, December, 5, 1963, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf.
+<a id="1">[1]</a> "Apollo Guidance Computer Information Series Issue 13: YUL Programming System", MIT Instrumentation Laboratory, Cambridge, MA, FR-2-113, December, 5, 1963, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf.
 
-<a id="2">[2]</a>R. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
+<a id="2">[2]</a> R. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
 
-<a id="3">[2]</a>H. Blair-Smith, *Left Brains for the RIght Stuff*, East Bridgewater, MA: SDP Publishing, 2015, 257
+<a id="3">[3]</a> H. Blair-Smith, *Left Brains for the RIght Stuff*, East Bridgewater, MA: SDP Publishing, 2015, 257

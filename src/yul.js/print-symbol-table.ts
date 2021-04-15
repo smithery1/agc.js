@@ -332,7 +332,7 @@ function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>,
   const totalString = total.toString().padStart(7)
   printer.println('')
   if (options.mode === Mode.Yul) {
-    if (options.tableText) {
+    if (options.formatted) {
       printer.println('SUMMARY OF SYMBOL TABLE LISTING')
     }
     printer.println('')
@@ -343,7 +343,7 @@ function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>,
     printer.println('')
     printer.println('TOTAL:', totalString)
   } else {
-    if (options.tableText) {
+    if (options.formatted) {
       printer.println('SUMMARY OF SYMBOL TABLE LISTINGS')
     }
     printer.println('')
