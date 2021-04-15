@@ -44,7 +44,9 @@ export function printUnreferencedSymbols (pass2: Pass2Output, context: PrintCont
 export function printCrossReference (pass2: Pass2Output, context: PrintContext): void {
   const table = pass2.symbolTable.getTable()
   const sorted = [...table.entries()].sort(valueSort)
-  const def = context.options.mode === Mode.Yul ? XREF_YUL_TABLE_DATA : XREF_GAP_TABLE_DATA
+  const def = context.options.yulVersion === 66
+    ? XREF_YUL_66_TABLE_DATA
+    : (context.options.yulVersion === 67 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
   printTable(context.printer, def, sorted.values(), context.options)
   context.printer.endPage()
 
@@ -53,6 +55,10 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
     const value2 = e2[1].value
 
     if (value1 === value2) {
+      // I can't make out YUL 66's secondary sort order when values are equal.
+      // It's *almost* but not quite by symbol.
+      // See Sunburst37 scans page 1079.
+      // Something to look into in more detail at some point.
       if (context.options.mode === Mode.Gap) {
         const page1 = e1[1].definition.lexedLine.sourceLine.page
         const page2 = e2[1].definition.lexedLine.sourceLine.page
@@ -288,7 +294,7 @@ const XREF_GAP_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   separator: () => false
 }
 
-const XREF_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
+const XREF_YUL_67_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   columns: 5,
   columnWidth: XREF_COLUMNS.Entry,
   columnGap: 1,
@@ -296,6 +302,22 @@ const XREF_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   rowBreaks: 4,
   pageHeader: ['ERASABLE & EQUIVALENCE CROSS-REFERENCE TABLE: SHOWING DEFINITION, PAGE OF DEFINITION, AND SYMBOL'],
   entryString: xrefEntryString,
+  separator: () => false
+}
+
+const XREF_YUL_66_TABLE_DATA: TableData<[string, SymbolEntry]> = {
+  columns: 5,
+  columnWidth: XREF_COLUMNS.Entry,
+  columnGap: 1,
+  // There is some sort of pagination bug in YUL66 where an inappropriate blank line is inserted halfway down the page,
+  // resulting in a single line on the next page.
+  // See Sunburst37 scans page 1081.
+  // We don't reproduce that here, but it means it's hard to compare the table and page numbers are annoyingly off.
+  // Could do it later.
+  rowsPerPage: 50,
+  rowBreaks: 4,
+  pageHeader: ['ERASABLE & EQUIVALENCE CROSS-REFERENCE TABLE: SHOWING DEFINITION, PAGE OF DEFINITION, AND SYMBOL'],
+  entryString: xrefYul66EntryString,
   separator: () => false
 }
 
@@ -308,6 +330,18 @@ function xrefEntryString (data: [string, SymbolEntry]): string | undefined {
     return addressing.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
         + ' ' + page.toString().padStart(XREF_COLUMNS.Page)
         + '  ' + symbol.padEnd(XREF_COLUMNS.Symbol)
+  }
+}
+
+function xrefYul66EntryString (data: [string, SymbolEntry]): string | undefined {
+  const entry = data[1]
+  if (isEqualsCard(entry.definition.card) || isEraseCard(entry.definition.card)) {
+    const symbol = data[0]
+    const def = entry.value
+    const page = entry.definition.lexedLine.sourceLine.page
+    return symbol.padEnd(XREF_COLUMNS.Symbol)
+      + ' ' + addressing.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
+        + ' ' + page.toString().padStart(XREF_COLUMNS.Page)
   }
 }
 

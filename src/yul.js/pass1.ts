@@ -368,7 +368,7 @@ export class Pass1Assembler {
       assembled.refAddress = this.locationCounter
       assembled.extent = 1
     } else {
-      // ERASE addressing is special: X +N means X -> X + N
+      // ERASE addressing is special: X +N means the range [X, X + N)
       let start = this.locationCounter
       let extent = 1 + (card.address.offset ?? 0)
 

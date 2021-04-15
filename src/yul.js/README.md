@@ -76,11 +76,11 @@ The program current runs under node.js.
 
         % node agc.js/build/yul.js/node/index-node.js virtualagc/Luminary099/MAIN.agc
 
-    1. Same assembly, but output all the GAP end-of-listing tables to stdout.
+    - Same assembly, but output all the GAP end-of-listing tables to stdout.
 
         % node agc.js/build/yul.js/node/index-node.js -e +All virtualagc/Luminary099/MAIN.agc
 
-    1. Show command-line options available to control the behavior and output.
+    - Show command-line options available to control the behavior and output.
 
         % node agc.js/build/yul.js/node/index-node.js -h
 

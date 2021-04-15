@@ -35,10 +35,10 @@ function compare (str1: string, str2: string, convert: Convert): number {
     const c1 = convert(str1.charCodeAt(i))
     const c2 = convert(str2.charCodeAt(i))
 
-    if (c1 > c2) {
-      return 1
-    } else if (c1 < c2) {
+    if (c1 < c2) {
       return -1
+    } else if (c1 > c2) {
+      return 1
     }
   }
 
@@ -64,6 +64,11 @@ function compare (str1: string, str2: string, convert: Convert): number {
 
     return 0
   }
+}
+
+function convert (ascii: number, tableStart: number, table: number[]): number {
+  const offset = ascii - tableStart
+  return (offset < 0 || offset >= table.length) ? 0x100 + ascii : table[offset]
 }
 
 const PRINTABLE_ASCII_TO_EBCDIC = [
@@ -165,14 +170,9 @@ const PRINTABLE_ASCII_TO_EBCDIC = [
 ]
 
 const EBCDIC_TABLE_START = ' '.charCodeAt(0)
-const EBCDIC_TABLE_END = '~'.charCodeAt(0)
 
 function convertEbcdic (ascii: number): number {
-  if (ascii < EBCDIC_TABLE_START || ascii > EBCDIC_TABLE_END) {
-    return 256 + ascii
-  }
-
-  return PRINTABLE_ASCII_TO_EBCDIC[ascii - EBCDIC_TABLE_START]
+  return convert(ascii, EBCDIC_TABLE_START, PRINTABLE_ASCII_TO_EBCDIC)
 }
 
 function compareEbcdic (str1: string, str2: string): number {
@@ -244,14 +244,9 @@ const PRINTABLE_ASCII_TO_H800 = [
 ]
 
 const H800_TABLE_START = ' '.charCodeAt(0)
-const H800_TABLE_END = '~'.charCodeAt(0)
 
 function convertH800 (ascii: number): number {
-  if (ascii < H800_TABLE_START || ascii > H800_TABLE_END) {
-    return 256 + ascii
-  }
-
-  return PRINTABLE_ASCII_TO_H800[ascii - H800_TABLE_START]
+  return convert(ascii, H800_TABLE_START, PRINTABLE_ASCII_TO_H800)
 }
 
 function compareH800 (str1: string, str2: string): number {

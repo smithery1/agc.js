@@ -236,7 +236,7 @@ export function resolve (
 }
 
 /**
- * A function that can resolve a specified symbol to a numeric address,
+ * A function that can resolve a specified symbol to a numeric address.
  */
 export type Resolver = (symbol: string) => number | undefined
 

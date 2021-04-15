@@ -96,8 +96,8 @@ export interface Basic extends BaseOperation {
  *
  * Ref YUL, 13-154 "Clerical Cards"
  *
- * There are a handful of codes referred to in Ref YUL but that do not appear in the source, such as HEAD, TAIL, and
- * MEMORY.
+ * There are a handful of codes referred to in Ref YUL but that do not appear in the source (yet), such as HEAD, TAIL,
+ * and MEMORY.
  * They are not supported here.
  */
 export interface Clerical extends BaseOperation {
@@ -116,7 +116,7 @@ export interface NumericConstant extends BaseOperation {
 }
 
 /**
- * Whether an interpretive operand references the contents of an address or a numeric constant
+ * Whether an interpretive operand references the contents of an address or a numeric constant.
  */
 export enum InterpretiveOperandType {
   Address,
