@@ -78,15 +78,15 @@ The program current runs under node.js.
 
     - Same assembly, but output all the GAP end-of-listing tables to stdout.
 
-        % node agc.js/build/yul.js/node/index-node.js -e +All virtualagc/Luminary099/MAIN.agc
+            % node agc.js/build/yul.js/node/index-node.js -e +All virtualagc/Luminary099/MAIN.agc
 
     - Show command-line options available to control the behavior and output.
 
-        % node agc.js/build/yul.js/node/index-node.js -h
+            % node agc.js/build/yul.js/node/index-node.js -h
 
 ## References
 <a id="1">[1]</a> "Apollo Guidance Computer Information Series Issue 13: YUL Programming System", MIT Instrumentation Laboratory, Cambridge, MA, FR-2-113, December, 5, 1963, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf.
 
 <a id="2">[2]</a> R. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
 
-<a id="3">[3]</a> H. Blair-Smith, *Left Brains for the RIght Stuff*, East Bridgewater, MA: SDP Publishing, 2015, 257
+<a id="3">[3]</a> H. Blair-Smith, *Left Brains for the Right Stuff*, East Bridgewater, MA: SDP Publishing, 2015, 257

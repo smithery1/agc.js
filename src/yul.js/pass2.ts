@@ -594,10 +594,6 @@ export class Pass2Assembler {
     let word: number
     let compliment = false
 
-    const indexable = interpretive?.operator.operation.subType === ops.InterpretiveType.Indexable ?? false
-    const firstOperand = interpretive?.operand === interpretive?.operator.operation.operand1
-    const indexableOperand = interpretive?.operand.index ?? false
-
     if (interpretive?.operand.type === ops.InterpretiveOperandType.Address) {
       const isErasable = addressing.isErasable(addressing.memoryArea(address))
       if (isErasable) {
@@ -605,6 +601,7 @@ export class Pass2Assembler {
       } else {
         word = this.translateInterpretiveFixed(interpretive.operand, address, assembled)
       }
+      const indexableOperand = interpretive?.operand.index ?? false
       if (indexableOperand) {
         ++word
       }
@@ -612,7 +609,10 @@ export class Pass2Assembler {
         compliment = true
       }
     } else {
+      // Ref SYM, VB-4
       word = address > 0x1000 ? (address - 0x1000) : address
+      const indexable = interpretive?.operator.operation.subType === ops.InterpretiveType.Indexable ?? false
+      const firstOperand = interpretive?.operand === interpretive?.operator.operation.operand1
       if (indexable && firstOperand) {
         ++word
       }
