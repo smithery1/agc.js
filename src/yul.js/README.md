@@ -6,13 +6,13 @@ The original assembler for the AGC software was named YUL[[1]](#1). It provided 
 
 YUL ran on a [Honeywell 800 Data Processing System](https://en.wikipedia.org/wiki/Honeywell_800) (they sprang for the floating point unit), and later on an upgraded 1800 model. Its input was a large collection of 80-column punch cards representing a mission software program. It assembled these to tape and output various summary listings of the results to a printer. These first of these listings included the original source code in an assembly listing format with the assembled binary word for each line.
 
-YUL was ported by contractors sometime in 1967 to run on the lab's new IBM 360 Model 75[[3]](#3). It was renamed GAP and several enhancements and a few incompatibilities were introduced. This document and the yul.js source code use the generic "YUL" when referencing an AGC assembler. Where a distinction is necessary, either "GAP" is used or the context makes clear that "YUL" references that particular assembler.
+YUL was ported by contractors sometime in 1967 to run on the lab's new IBM 360 Model 75[[2]](#2). It was renamed GAP and several enhancements and a few incompatibilities were introduced. This document and the yul.js source code use the generic "YUL" when referencing an AGC assembler. Where a distinction is necessary, either "GAP" is used or the context makes clear that "YUL" references that particular assembler.
 
 The yul.js program is not an emulation of YUL or GAP, nor does it attempt to reproduce their internals or behavior. It simply reads in source in yaYUL format (see below) and writes out assembled binary. For fun, however, it does mimic some of the original YUL and GAP output. It can run in YUL mode or GAP mode (the default). YUL mode is required for some early code bases.
 
 ## Input
 
-The Virtual AGC project has digitized all manner of Apollo mission source code in a format compatible with their assembler, named yaYUL[[2]](#2). This is the format accepted by yul.js, which can read those files without modification.
+The Virtual AGC project has digitized all manner of Apollo mission source code in a format compatible with their assembler, named yaYUL[[3]](#3). This is the format accepted by yul.js, which can read those files without modification.
 
 The YUL punch card input was column based, and YUL used column ranges to identify fields. Whitespace was significant, and in theory identifiers could contain spaces, match instruction opcodes, and so on.
 
@@ -87,6 +87,6 @@ The program current runs under node.js.
 ## References
 <a id="1">[1]</a> "Apollo Guidance Computer Information Series Issue 13: YUL Programming System", MIT Instrumentation Laboratory, Cambridge, MA, FR-2-113, December, 5, 1963, https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf.
 
-<a id="2">[2]</a> R. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
+<a id="2">[2]</a> H. Blair-Smith, *Left Brains for the Right Stuff*, East Bridgewater, MA: SDP Publishing, 2015, 257
 
-<a id="3">[3]</a> H. Blair-Smith, *Left Brains for the Right Stuff*, East Bridgewater, MA: SDP Publishing, 2015, 257
+<a id="3">[3]</a> R. Burkey, "Programmer's Manual: Block 2 AGC Assembly Language", "General Formatting Information", https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.

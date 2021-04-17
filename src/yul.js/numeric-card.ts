@@ -151,7 +151,8 @@ function lexOctal (
 
   const wholeNumber = whole.length === 0 ? 0 : Number.parseInt(whole, 8)
   const fractionalNumber = fractional.length === 0 ? 0 : Number.parseInt(fractional, 8)
-  let octal = wholeNumber * Math.pow(8, fractional.length) + fractionalNumber
+  const octScale = Math.pow(8, fractional.length)
+  let octal = wholeNumber * octScale + fractionalNumber
 
   const scaling = parsed.scaling === undefined ? 0 : parsed.scaling
   const scale = 1 << Math.abs(scaling)
@@ -160,6 +161,8 @@ function lexOctal (
   } else {
     octal *= scale
   }
+
+  octal /= octScale
 
   // Ref YUL, 13-145.
   let max: number

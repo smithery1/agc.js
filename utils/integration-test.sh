@@ -71,6 +71,30 @@ function usageAndExit
     exit 1
 }
 
+function runTask
+{
+    local NUMBER="$1"
+    local TOTAL="$2"
+    local ASSEMBLER="$3"
+    local TYPE="$4"
+    local FUNC="$5"
+    shift 5
+
+    local ARGS="$2"
+    [[ -n "$ARGS" ]] && ARGS=" with args $ARGS"
+    echo -n "($NUMBER/$TOTAL) $ASSEMBLER assembing $1$ARGS..."
+    $FUNC "$@" > $ERROR_TMP 2>&1
+    RESULT=$?
+    if (( $RESULT == 0 )) && [[ -t 1 ]]
+    then
+        tput dl1
+    else
+        echo FAILED
+    fi
+    [[ -s $ERROR_TMP ]] && cat $ERROR_TMP
+    return $RESULT
+}
+
 function compare
 {
     local F1="$1"
@@ -125,7 +149,6 @@ function yulJsAssemble
     local OUTPUT="$3"
     local MAIN_PATH=$(cygpath -w "$DIR/MAIN.agc" | sed 's@\\@/@g')
 
-    echo "[YUL.JS assembling $DIR to $OUTPUT with args $ARGS]"
     "$NODE" "$INDEX_PATH" "file:///$MAIN_PATH" $ARGS -u -e -All +OctalCompact \*Results \
         | sed -e 's@^ *[^ ]* @@' -e "s/  @  /00000/g" \
         > "$OUTPUT"
@@ -138,7 +161,6 @@ function yaYulAssemble
     local OUTPUT="$3"
     local LINES="$4"
 
-    echo "[yaYUL assembling $DIR to $OUTPUT with args $ARGS]"
     pushd $DIR > /dev/null || return 1
     "$YAYUL" $ARGS MAIN.agc > /dev/null || return 1
     popd > /dev/null || return 1
@@ -184,11 +206,10 @@ function testCodeBase
         sanitizeBinsource "$BINSOURCE" "$BINSOURCE_OUT" || return 1
     fi
 
-    yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" "$LINES" || return 1
-    yaYulAssemble "$FORK_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_FORK_OUT" "$LINES" || return 1
-    yulJsAssemble "$FORK_CODE_DIR" "$YULJS_ARGS" "$YULJS_FORK_OUT" || return 1
+    runTask 1 3 yaYUL main yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" "$LINES" || return 1
+    runTask 2 3 yaYUL fork yaYulAssemble "$FORK_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_FORK_OUT" "$LINES" || return 1
+    runTask 3 3 yulJs fork yulJsAssemble "$FORK_CODE_DIR" "$YULJS_ARGS" "$YULJS_FORK_OUT" || return 1
 
-    echo ''
     compareAll "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT" "$BINSOURCE_OUT" || return 1
     rm "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT"
     [[ -n "$BINSOURCE_OUT" ]] && rm "$BINSOURCE_OUT"
@@ -233,6 +254,7 @@ ORIG_IFS=$IFS
 NL_IFS="
 "
 FAILURES=
+ERROR_TMP=/tmp/integration-stderr
 
 if (( $# > 0 ))
 then
