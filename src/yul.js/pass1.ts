@@ -2,11 +2,11 @@ import { compat } from '../common/compat'
 import * as field from './address-field'
 import * as addressing from './addressing'
 import { AssembledCard, getCusses } from './assembly'
-import { Options } from './bootstrap'
+import { Options, YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType } from './lexer'
-import * as ops from './operations'
+import { Operations } from './operations'
 import * as parse from './parser'
 import { Pass1SymbolTable, Pass2SymbolTable } from './symbol-table'
 
@@ -22,9 +22,6 @@ export interface Pass1Output {
   readonly symbolTable: Pass2SymbolTable
   readonly cells: Cells
 }
-
-const EQUALS_MINUS_OP = ops.requireOperation('=MINUS')
-const EQUALS_PLUS_OP = ops.requireOperation('=PLUS')
 
 /**
  * The pass 1 assembler.
@@ -60,7 +57,7 @@ export class Pass1Assembler {
   private locationCounter: number | undefined
   private hadLocationCounter: boolean
 
-  constructor (private readonly options: Options) {
+  constructor (private readonly operations: Operations, private readonly options: Options) {
   }
 
   /**
@@ -80,7 +77,7 @@ export class Pass1Assembler {
     this.urlBase = mainUrl.substring(0, index)
     this.hadLocationCounter = false
 
-    const parser = new parse.Parser()
+    const parser = new parse.Parser(this.operations, this.options)
     let symbolTable: Pass2SymbolTable
 
     try {
@@ -311,7 +308,7 @@ export class Pass1Assembler {
       // but required to compile Sunburst120.
       // YUL 67: Behaves like BANK with no operand
       // Others: Leaves SBANK unchanged
-      if (this.options.yulVersion === 67) {
+      if (this.options.yulVersion === YulVersion.Y1967) {
         sBank = addressing.fixedBankNumberToBank(bankNumber)?.sBank
       }
     }
@@ -429,10 +426,11 @@ export class Pass1Assembler {
       }
     } else {
       let offset = 0
-      if ((card.operation.operation === EQUALS_MINUS_OP || card.operation.operation === EQUALS_PLUS_OP)
+      if ((card.operation.operation === this.operations.EQ_MINUS
+        || card.operation.operation === this.operations.EQ_PLUS)
         && this.validateLocationCounter(this.locationCounter, assembled)) {
         offset = this.locationCounter
-        if (card.operation.operation === EQUALS_MINUS_OP) {
+        if (card.operation.operation === this.operations.EQ_MINUS) {
           offset = -offset
         }
       }

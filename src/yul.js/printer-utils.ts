@@ -2,10 +2,12 @@ import { compat } from '../common/compat'
 import { Options } from './bootstrap'
 import { CharSet } from './charset'
 import * as cusses from './cusses'
+import { Operations } from './operations'
 import { SymbolEntry } from './symbol-table'
 
 export interface PrintContext {
   printer: PrinterContext
+  operations: Operations
   options: Options
   charset: CharSet
   sortedSymbolTable?: Array<[string, SymbolEntry]>

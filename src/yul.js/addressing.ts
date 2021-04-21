@@ -134,6 +134,11 @@ export const MEMORY_SIZE = MEMORY_MAX - 0x800
 export const FIXED_MEMORY_OFFSET = TRUE_RANGE_FIXED_FIXED.min
 
 /**
+ * The maximum number of fixed banks available.
+ */
+export const NUM_FIXED_BANKS = TRUE_FIXED_BANKS.length
+
+/**
  * The various memory areas.
  * The nomenclature varies between documents and the choices here arbitrarily follow Ref SYM, IIB-3.
  */
@@ -494,7 +499,7 @@ export function memoryOffset (trueAddress: number): number {
 
 /**
  * Returns the true memory address for the specified offset from the start of memory.
- * This is the compliment to memoryOffset.
+ * This is the complement to memoryOffset.
  * No range checking is done on the input.
  *
  * @param offset the offset from the start of memory, ignoring the unaddressable range [14000,17777]

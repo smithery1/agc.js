@@ -4,10 +4,10 @@ import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
 import { Cells } from './cells'
 import { LexedLine, LineType } from './lexer'
-import * as ops from './operations'
+import { InterpretiveType } from './operations'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
-import { LINE_LENGTH, PrintContext, PrinterContext } from './printer-utils'
+import { LINE_LENGTH, PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
 import { parity } from './util'
 
@@ -24,10 +24,6 @@ const COLUMNS = {
 
 const EMPTY_LINE_NUMBER = ' '.repeat(COLUMNS.LineNumber)
 const EMPTY_CELL_WORD = ' '.repeat(COLUMNS.CellWord)
-
-const COUNT_OP = ops.requireOperation('COUNT')
-const ERASE_OP = ops.requireOperation('ERASE')
-const EQECADR_OP = ops.requireOperation('=ECADR')
 
 export function printCusses (pass2: Pass2Output, context: PrintContext): void {
   printAssembly(pass2, context, false, true)
@@ -50,6 +46,8 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
     last: number
   }
   const refMap = new Map<string, Reference>()
+  const operations = context.operations
+  const printer = context.printer
 
   pass2.cards.forEach(card => {
     if (page !== card.lexedLine.sourceLine.page) {
@@ -59,11 +57,11 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
       source = card.lexedLine.sourceLine.source
       page = card.lexedLine.sourceLine.page
       if (listing) {
-        printHeader(context.printer, source, card.eBank, card.sBank)
+        printHeader(source, card.eBank, card.sBank)
       }
     }
     if (listing) {
-      printCard(context.printer, pass2, card)
+      printCard(card)
     }
     if (cusses) {
       printCusses(card)
@@ -83,7 +81,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
         compat.log(source)
         cussSource = source
       }
-      printCard(context.printer, pass2, card)
+      printCard(card)
     }
     card.cusses.cusses().forEach(instance => {
       const formattedSerial = instance.cuss.serial.toString(16).toUpperCase().padStart(2, '0')
@@ -103,19 +101,19 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
     }
   }
 
-  function printCard (printer: PrinterContext, pass2: Pass2Output, card: AssembledCard): void {
+  function printCard (card: AssembledCard): void {
     if (parse.isRemark(card.card)) {
       if (card.card.fullLine) {
-        printFullLineRemark(printer, card.lexedLine)
+        printFullLineRemark(card.lexedLine)
       } else {
-        printInstructionCard(printer, card, pass2.cells, 'A')
+        printInstructionCard(card, pass2.cells, 'A')
       }
     } else if (card.lexedLine.type !== LineType.Pagination) {
-      printInstructionCard(printer, card, pass2.cells, ' ')
+      printInstructionCard(card, pass2.cells, ' ')
     }
   }
 
-  function printHeader (printer: PrinterContext, source: string, eBank: number, sBank: number): void {
+  function printHeader (source: string, eBank: number, sBank: number): void {
     const eBankString = 'E' + eBank.toString()
     const sBankString = sBank === 0 ? '' : 'S' + sBank.toString()
     const maxSourceLength = LINE_LENGTH - 2 - EMPTY_LINE_NUMBER.length - 7
@@ -129,7 +127,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
     printer.println('')
   }
 
-  function printFullLineRemark (printer: PrinterContext, line: LexedLine): void {
+  function printFullLineRemark (line: LexedLine): void {
     const lineNumber = lineNumberString(line)
     const remark = line.remark ?? ''
     printer.println('R', lineNumber, remark)
@@ -141,7 +139,6 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
   }
 
   function printLine (
-    printer: PrinterContext,
     type: string,
     card: AssembledCard | null,
     address: string,
@@ -167,7 +164,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
       let address: AddressField | undefined
       if (parse.hasAddressField(card.card)) {
         address = card.card.address
-      } else if (parse.isInterpretive(card.card) && card.card.lhs?.operation.subType === ops.InterpretiveType.Store) {
+      } else if (parse.isInterpretive(card.card) && card.card.lhs?.operation.subType === InterpretiveType.Store) {
         address = (card.card.rhs as AddressField)
       }
 
@@ -176,7 +173,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
         return ''
       }
 
-      if (parse.isClerical(card.card) && card.card.operation.operation === COUNT_OP) {
+      if (parse.isClerical(card.card) && card.card.operation.operation === operations.COUNT) {
         symbol = expandCountSymbol(card.refAddress ?? 0, card.card, symbol)
       }
 
@@ -197,38 +194,36 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
     }
   }
 
-  function printInstructionCard (printer: PrinterContext, card: AssembledCard, cells: Cells, type: string): void {
+  function printInstructionCard (card: AssembledCard, cells: Cells, type: string): void {
     const { field1, field2, field3, remark } = formatLine(card.lexedLine)
     if (card.refAddress === undefined) {
       const address = addressString(undefined)
       const word = wordString(card, undefined)
-      printLine(printer, type, card, address, word, ' ', field1, field2, field3, remark)
+      printLine(type, card, address, word, ' ', field1, field2, field3, remark)
     } else if (card.extent === 0) {
       const address = addressString(card.refAddress)
       const word = wordString(card, undefined)
-      printLine(printer, type, card, address, word, ' ', field1, field2, field3, remark)
-    } else if (parse.isClerical(card.card) && card.card.operation.operation === ERASE_OP) {
-      printEraseCell(printer, card, card.refAddress, field1, field2, field3, remark)
+      printLine(type, card, address, word, ' ', field1, field2, field3, remark)
+    } else if (parse.isClerical(card.card) && card.card.operation.operation === operations.ERASE) {
+      printEraseCell(card, card.refAddress, field1, field2, field3, remark)
     } else {
-      printCell(printer, cells, card, card.refAddress, field1, field2, field3, remark)
+      printCell(cells, card, card.refAddress, field1, field2, field3, remark)
       for (let i = 1; i < card.extent; i++) {
-        printCell(printer, cells, null, card.refAddress + i)
+        printCell(cells, null, card.refAddress + i)
       }
     }
   }
 
   function printEraseCell (
-    printer: PrinterContext,
     card: AssembledCard,
     address: number,
     field1?: string, field2?: string, field3?: string, remark?: string): void {
     const octalAddress = addressString(address)
     const endAddress = addressString(address + card.extent - 1)
-    printLine(printer, ' ', card, octalAddress, endAddress, ' ', field1, field2, field3, remark)
+    printLine(' ', card, octalAddress, endAddress, ' ', field1, field2, field3, remark)
   }
 
   function printCell (
-    printer: PrinterContext,
     cells: Cells,
     card: AssembledCard | null,
     address: number,
@@ -237,7 +232,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
     const word = cells.value(address)
     const octalWord = wordString(card, word)
     const parityBit = word === undefined ? ' ' : (parity(word) ? '1' : '0')
-    printLine(printer, ' ', card, octalAddress, octalWord, parityBit, field1, field2, field3, remark)
+    printLine(' ', card, octalAddress, octalWord, parityBit, field1, field2, field3, remark)
   }
 
   function addressString (address?: number): string {
@@ -303,7 +298,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
       field1 = field1.padEnd(COLUMNS.Location, ' ')
     }
     if (field2Pad) {
-      // Add 1 for leading compliment space
+      // Add 1 for leading complement space
       field2 = field2.padEnd(COLUMNS.Instruction + 1, ' ')
     }
     if (field3Pad) {
@@ -348,7 +343,7 @@ const COUNT_TABLE_DATA: TableData<CountContext> = {
   separator: () => false
 }
 
-function countEntryString (context: CountContext): string | undefined {
+function countEntryString (print: PrintContext, context: CountContext): string | undefined {
   const pageStartString = context.lastPageStart === 0 ? '' : context.lastPageStart.toString()
   return context.name.padEnd(COUNT_COLUMNS.Name)
     + ' REF ' + context.refs.toString().padStart(COUNT_COLUMNS.Refs)
@@ -366,7 +361,7 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
   map.set(currentCount.name, currentCount)
   pass2.cards.forEach(card => {
     const page = card.lexedLine.sourceLine.page
-    if (parse.isClerical(card.card) && card.card.operation.operation === COUNT_OP) {
+    if (parse.isClerical(card.card) && card.card.operation.operation === context.operations.COUNT) {
       currentCount.lastPageEnd = page
       // Field required and verified in parser
       const symbol = expandCountSymbol(card.refAddress ?? 0, card.card, card.lexedLine.field3 ?? '')
@@ -388,7 +383,7 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
         currentCount.lastCount += card.extent
         currentCount.totalCount += card.extent
         currentCount.cumCount += card.extent
-      } else if (parse.isClerical(card.card) && card.card.operation.operation === EQECADR_OP) {
+      } else if (parse.isClerical(card.card) && card.card.operation.operation === context.operations.EQ_ECADR) {
         // Don't understand the =ECADR instruction yet, which is apparently a late addition to GAP.
         // This is empirically correct per Luminary210 count data table, but we don't allocate any fixed memory for it
         // and we still match on assembled binary data.
@@ -407,7 +402,7 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
     cumCount += count.totalCount
     count.cumCount = cumCount
   })
-  printTable(context.printer, COUNT_TABLE_DATA, sortedTable.values(), context.options)
+  printTable(context, COUNT_TABLE_DATA, sortedTable.values(), context.options)
   context.printer.endPage()
 }
 

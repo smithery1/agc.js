@@ -83,15 +83,20 @@ function runTask
     local ARGS="$2"
     [[ -n "$ARGS" ]] && ARGS=" with args $ARGS"
     echo -n "($NUMBER/$TOTAL) $ASSEMBLER assembing $1$ARGS..."
-    $FUNC "$@" > $ERROR_TMP 2>&1
+    $FUNC "$@" > $TMP_FILE 2>&1
     RESULT=$?
-    if (( $RESULT == 0 )) && [[ -t 1 ]]
+    if (( $RESULT == 0 ))
     then
-        tput dl1
+        if [[ -t 1 ]]
+        then
+            tput dl1
+        else
+            echo
+        fi
     else
         echo FAILED
     fi
-    [[ -s $ERROR_TMP ]] && cat $ERROR_TMP
+    [[ -s $TMP_FILE ]] && cat $TMP_FILE
     return $RESULT
 }
 
@@ -159,18 +164,11 @@ function yaYulAssemble
     local DIR="$1"
     local ARGS="$2"
     local OUTPUT="$3"
-    local LINES="$4"
 
     pushd $DIR > /dev/null || return 1
     "$YAYUL" $ARGS MAIN.agc > /dev/null || return 1
     popd > /dev/null || return 1
-    if [[ -n "$LINES" ]]
-    then
-        "$DUMP" "$DIR/MAIN.agc.bin" | head "-$LINES" > "$OUTPUT" || return 1
-    else
-        "$DUMP" "$DIR/MAIN.agc.bin" > "$OUTPUT" || return 1
-    fi
-    return 0
+    "$DUMP" "$DIR/MAIN.agc.bin" > "$OUTPUT" || return 1
 }
 
 function sanitizeBinsource
@@ -206,9 +204,19 @@ function testCodeBase
         sanitizeBinsource "$BINSOURCE" "$BINSOURCE_OUT" || return 1
     fi
 
-    runTask 1 3 yaYUL main yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" "$LINES" || return 1
-    runTask 2 3 yaYUL fork yaYulAssemble "$FORK_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_FORK_OUT" "$LINES" || return 1
+    runTask 1 3 yaYUL main yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" || return 1
+    runTask 2 3 yaYUL fork yaYulAssemble "$FORK_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_FORK_OUT" || return 1
     runTask 3 3 yulJs fork yulJsAssemble "$FORK_CODE_DIR" "$YULJS_ARGS" "$YULJS_FORK_OUT" || return 1
+
+    if [[ -n "$LINES" ]]
+    then
+        head -$LINES "$YAYUL_MAIN_OUT" > $TMP_FILE || return 1
+        mv $TMP_FILE "$YAYUL_MAIN_OUT" || return 1
+        head -$LINES "$YAYUL_FORK_OUT" > $TMP_FILE || return 1
+        mv $TMP_FILE "$YAYUL_FORK_OUT" || return 1
+        head -$LINES "$YULJS_FORK_OUT" > $TMP_FILE || return 1
+        mv $TMP_FILE "$YULJS_FORK_OUT" || return 1
+    fi
 
     compareAll "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT" "$BINSOURCE_OUT" || return 1
     rm "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT"
@@ -246,7 +254,7 @@ EOF
 }
 
 (( $# < 1 )) && usageAndExit "$0"
-source "$1" || return 1
+source "$1" || exit 1
 typeset -r INDEX_PATH=$(cygpath -w "$YULJS/node/index-node.js")
 shift
 
@@ -254,7 +262,7 @@ ORIG_IFS=$IFS
 NL_IFS="
 "
 FAILURES=
-ERROR_TMP=/tmp/integration-stderr
+TMP_FILE=/tmp/integration-tmp
 
 if (( $# > 0 ))
 then

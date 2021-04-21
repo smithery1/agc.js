@@ -1,9 +1,10 @@
 import * as field from './address-field'
 import * as addressing from './addressing'
 import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses } from './assembly'
-import { Options } from './bootstrap'
+import { Options, YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
+import { LineType, SourceLine } from './lexer'
 import * as ops from './operations'
 import { BasicAddressRange } from './operations'
 import * as parse from './parser'
@@ -32,8 +33,6 @@ interface BnkSum {
   readonly startAddress: number
   readonly sumAddress: number
 }
-
-const INDEX_OP = ops.requireOperation('INDEX')
 
 /**
  * The pass 2 assembler.
@@ -92,7 +91,7 @@ export class Pass2Assembler {
   private oneShotSBank: number | undefined
   private count: AssembledCard | undefined
 
-  constructor (private readonly options: Options) {
+  constructor (private readonly operations: ops.Operations, private readonly options: Options) {
   }
 
   /**
@@ -118,7 +117,9 @@ export class Pass2Assembler {
 
     this.output.cards.forEach((card) => {
       if (card.lexedLine.sourceLine.source !== prevSource) {
-        this.eBank = 0
+        if (this.options.yulVersion > YulVersion.BLK2) {
+          this.eBank = 0
+        }
         prevSource = card.lexedLine.sourceLine.source
       }
       if (card.card !== undefined && card.refAddress !== undefined) {
@@ -138,6 +139,9 @@ export class Pass2Assembler {
       this.addCussCounts(card.cusses)
     })
 
+    if (this.options.yulVersion <= YulVersion.BLK2) {
+      this.addBnkSumsBlk2()
+    }
     this.addBnkSums()
     return this.output
   }
@@ -154,13 +158,13 @@ export class Pass2Assembler {
     }
   }
 
-  private setCell (word: number, offset: number, compliment: boolean, assembled: AssembledCard): void {
+  private setCell (word: number, offset: number, complement: boolean, assembled: AssembledCard): void {
     word += offset
     if (word < 0) {
-      compliment = true
+      complement = true
       word = -word
     }
-    const value = compliment ? word ^ COMPLEMENT_MASK : word
+    const value = complement ? word ^ COMPLEMENT_MASK : word
     this.output.cells.assignValue(this.locationCounter, value, assembled)
     ++this.locationCounter
     if (this.count !== undefined) {
@@ -245,7 +249,7 @@ export class Pass2Assembler {
     }
 
     this.setCell(word, resolved.offset, card.operation.complemented, assembled)
-    this.indexMode = card.operation.operation === INDEX_OP
+    this.indexMode = this.operations.isIndex(card.operation.operation)
   }
 
   private basicAddress (card: parse.BasicInstructionCard, assembled: AssembledCard): field.TrueAddress | undefined {
@@ -277,19 +281,15 @@ export class Pass2Assembler {
       return undefined
     }
 
-    // The non-extended INDEX can only access erasable memory, which is what we have defined as the operation.
-    // The extended INDEX can access any memory.
-    if (operation !== INDEX_OP || !card.isExtended) {
-      if (operation.addressRange === BasicAddressRange.FixedMemory) {
-        const addressType = addressing.memoryArea(address)
-        if (!addressing.isFixed(addressType)) {
-          getCusses(assembled).add(cusses.Cuss3A, 'Expected fixed but got ' + addressing.asAssemblyString(address))
-        }
-      } else if (operation.addressRange === BasicAddressRange.ErasableMemory) {
-        const addressType = addressing.memoryArea(address)
-        if (!addressing.isErasable(addressType)) {
-          getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
-        }
+    if (operation.addressRange === BasicAddressRange.FixedMemory) {
+      const addressType = addressing.memoryArea(address)
+      if (!addressing.isFixed(addressType)) {
+        getCusses(assembled).add(cusses.Cuss3A, 'Expected fixed but got ' + addressing.asAssemblyString(address))
+      }
+    } else if (operation.addressRange === BasicAddressRange.ErasableMemory) {
+      const addressType = addressing.memoryArea(address)
+      if (!addressing.isErasable(addressType)) {
+        getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
       }
     }
 
@@ -359,25 +359,17 @@ export class Pass2Assembler {
       getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
     }
 
-    let op = lhs.operation
-    if (lhs.indexed) {
-      switch (lhs.operation.symbol) {
-        case 'STORE':
-          op = rhs.indexRegister === 1 ? ops.STORE_INDEX_1 : ops.STORE_INDEX_2
-          break
-
-        case 'STODL':
-          op = ops.STODL_INDEXED
-          break
-
-        case 'STOVL':
-          op = ops.STOVL_INDEXED
-          break
-      }
+    let raw: number
+    // Ref BTM p2-10. BLK2 uses a 4 bit op-code and a 10 bit address.
+    if (this.options.yulVersion <= YulVersion.BLK2) {
+      const ts = (lhs.operation.code ?? 0) << 10
+      const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+      raw = ts | (bankAndAddress?.address ?? ERROR_WORD)
+    } else {
+      const ts = (lhs.operation.code ?? 0) << 11
+      raw = ts | address
     }
-    const ts = (op.code ?? 0) << 11
-    const raw = ts | address
-    // Complimented if previous instruction was STADR
+    // Complemented if previous instruction was STADR
     this.setCell(raw + 1, resolved.offset, lhs.complemented, assembled)
   }
 
@@ -464,13 +456,20 @@ export class Pass2Assembler {
     if (bankAndAddress.bank.eBank !== undefined) {
       low = bankAndAddress.bank.eBank
     } else {
-      if (this.oneShotEBank === undefined) {
-        getCusses(assembled).add(cusses.Cuss58)
-        return
+      let ebank = this.oneShotEBank
+      // Ref SYM, VC-2, which referes to BBCON but 2CADR is just a BBCON and a GENADR.
+      // A preceding one-short EBANK= is present in all code bases after Aurora.
+      if (ebank === undefined) {
+        if (this.options.yulVersion === YulVersion.BLK2) {
+          ebank = this.eBank
+        } else {
+          getCusses(assembled).add(cusses.Cuss58)
+          return
+        }
       }
       const fBank = bankAndAddress.bank.fBank ?? -1
       const sBank = this.oneShotSBank === undefined ? bankAndAddress.bank.sBank : this.oneShotSBank
-      low = this.bbconVariableFixed(fBank, sBank, this.oneShotEBank)
+      low = this.bbconVariableFixed(fBank, sBank, ebank)
       this.oneShotEBank = undefined
       this.oneShotSBank = undefined
     }
@@ -497,9 +496,15 @@ export class Pass2Assembler {
   }
 
   private onBbcon (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
-    if (this.oneShotEBank === undefined) {
-      getCusses(assembled).add(cusses.Cuss58)
-      return
+    let ebank = this.oneShotEBank
+    // Ref SYM, VC-2 implies a preceding one-short EBANK= is required, and it is present in all code bases after Aurora.
+    if (ebank === undefined) {
+      if (this.options.yulVersion === YulVersion.BLK2) {
+        ebank = this.eBank
+      } else {
+        getCusses(assembled).add(cusses.Cuss58)
+        return
+      }
     }
 
     // Indexed is BBCON*
@@ -516,7 +521,7 @@ export class Pass2Assembler {
       bank = { fBank: bankAndAddress?.bank.fBank ?? 0, sBank }
     }
 
-    const value = this.bbconVariableFixed(bank.fBank, bank.sBank, this.oneShotEBank)
+    const value = this.bbconVariableFixed(bank.fBank, bank.sBank, ebank)
     this.setCell(value, resolved.offset, card.operation.complemented, assembled)
     this.oneShotEBank = undefined
     this.oneShotSBank = undefined
@@ -578,13 +583,15 @@ export class Pass2Assembler {
     }
 
     // Ref SYM, VIB-26
-    // Format is 01000CCISSSSSSS where:
+    // Format is PPPPCCISSSSSSS where:
+    // PPPPP: 0000 for BLK2, 01000 for AGC
     // CC: code from interpretive op, which is (RD: rounded, direction)
     // I: 0 for negative shift, 1 for non-negative shift
     // SSSSSSS: amount of shift
+    const prefix = this.options.yulVersion <= YulVersion.BLK2 ? 0 : 0x2000
     const code = interpretive?.operator.operation.code ?? 0
-    const word = 0x2000 | (code << 8) | (shiftAmount + 129)
-    this.setCell(word, 0, card.address.indexRegister === 2, assembled)
+    const word = prefix | (code << 8) | (shiftAmount + 129)
+    this.setCell(word, 0, card.address?.indexRegister === 2, assembled)
   }
 
   private onOtherInterpretiveP (
@@ -592,33 +599,37 @@ export class Pass2Assembler {
     const address = resolved.address + resolved.offset
     const interpretive = card.interpretive
     let word: number
-    let compliment = false
+    let complement = false
+    const isErasable = addressing.isErasable(addressing.memoryArea(address))
 
     if (interpretive?.operand.type === ops.InterpretiveOperandType.Address) {
-      const isErasable = addressing.isErasable(addressing.memoryArea(address))
       if (isErasable) {
         word = this.translateInterpretiveErasable(interpretive.operand, address, assembled)
       } else {
         word = this.translateInterpretiveFixed(interpretive.operand, address, assembled)
       }
-      const indexableOperand = interpretive?.operand.index ?? false
-      if (indexableOperand) {
+      if (interpretive?.operand.indexable) {
         ++word
       }
-      if (card.address.indexRegister === 2) {
-        compliment = true
+      if (card.address?.indexRegister === 2) {
+        complement = true
       }
     } else {
       // Ref SYM, VB-4
-      word = address > 0x1000 ? (address - 0x1000) : address
-      const indexable = interpretive?.operator.operation.subType === ops.InterpretiveType.Indexable ?? false
+      if (this.options.yulVersion <= YulVersion.BLK2 && isErasable) {
+        const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+        word = bankAndAddress?.address ?? ERROR_WORD
+      } else {
+        word = address > 0x1000 ? (address - 0x1000) : address
+      }
+      const indexableType = interpretive?.operator.operation.subType === ops.InterpretiveType.Indexable ?? false
       const firstOperand = interpretive?.operand === interpretive?.operator.operation.operand1
-      if (indexable && firstOperand) {
+      if (indexableType && firstOperand) {
         ++word
       }
     }
 
-    this.setCell(word, 0, compliment, assembled)
+    this.setCell(word, 0, complement, assembled)
   }
 
   private translateInterpretiveErasable (
@@ -632,6 +643,11 @@ export class Pass2Assembler {
     // Also allegedly off-limits are addresses < 077 and EBANKs other than the current one.
     // However, there are plenty of stores in low memory and references to other banks without
     // an EBANK= update.
+
+    if (this.options.yulVersion <= YulVersion.BLK2) {
+      const bankAndAddress = addressing.asSwitchedBankAndAddress(trueAddress)
+      return bankAndAddress?.address ?? ERROR_WORD
+    }
     return trueAddress
   }
 
@@ -639,7 +655,7 @@ export class Pass2Assembler {
     operand: ops.InterpretiveOperand, trueAddress: number, assembled: AssembledCard): number {
     if (!operand.fixedMemory) {
       getCusses(assembled).add(cusses.Cuss37, 'Fixed not allowed')
-    } else if (operand.index) {
+    } else if (operand.indexable) {
       const fixedAddress = addressing.asInterpretiveFixedAddress(this.locationCounter, trueAddress)
       if (fixedAddress === undefined) {
         getCusses(assembled).add(
@@ -825,9 +841,39 @@ export class Pass2Assembler {
     }
   }
 
-  private addBnkSums (): void {
-    let localCusses = new cusses.Cusses()
+  private addBnkSumsBlk2 (): void {
+    // Aurora 12 manually adds the end-of-bank TC instructions but doesn't use BNKSUM.
+    // The checksums are present in the octal table, however.
+    const sourceLine: SourceLine = {
+      source: 'NONE',
+      lineNumber: 0,
+      page: 0,
+      line: ''
+    }
+    const card: parse.ClericalCard = {
+      type: parse.CardType.Clerical,
+      operation: { operation: this.operations.BNKSUM, indexed: false, complemented: false }
+    }
+    const assembled: AssembledCard = {
+      lexedLine: { type: LineType.Remark, sourceLine },
+      card,
+      extent: 1,
+      count: 0,
+      eBank: 0,
+      sBank: 0
+    }
+    for (let bank = 0; bank < addressing.NUM_FIXED_BANKS; bank++) {
+      const range = addressing.fixedBankRange(bank)
+      if (range !== undefined) {
+        const address = this.output.cells.findFree(range)
+        if (address !== undefined && address > range.min && address < range.max) {
+          this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: address })
+        }
+      }
+    }
+  }
 
+  private addBnkSums (): void {
     // Ref SYM, IIF-6 for the checksum algorithm.
     this.bnkSums.forEach(bnkSum => {
       let sum = 0
@@ -849,8 +895,9 @@ export class Pass2Assembler {
       // "The check sum word is formed by the assembler in such a way as to give it the smaller of its two possible
       // magnitudes..."
       // Meaning the checksum has the same sign as the sum, including -0 if necessary.
-      // This works most of the time, but old code (Sunburst37 aka YUL 66) appears to always use a positive bank number.
-      if (sum < 0 && this.options.yulVersion !== 66) {
+      // This works most of the time, but old code (Sunburst37 (aka YUL 1966) and older) appears to always use a
+      // positive bank number.
+      if (sum < 0 && this.options.yulVersion > YulVersion.Y1966) {
         checksum = -bnkSum.bank - sum
         if (checksum === 0) {
           // Special case for -0
@@ -864,15 +911,6 @@ export class Pass2Assembler {
       }
 
       this.output.cells.assignDefinitionAndValue(bnkSum.sumAddress, checksum, bnkSum.definition)
-      if (!localCusses.empty()) {
-        this.addCussCounts(localCusses)
-        if (bnkSum.definition.cusses === undefined) {
-          bnkSum.definition.cusses = localCusses
-        } else {
-          bnkSum.definition.cusses.addAll(localCusses)
-        }
-        localCusses = new cusses.Cusses()
-      }
     })
   }
 

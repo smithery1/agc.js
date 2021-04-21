@@ -5,7 +5,7 @@ This project is an attempt to write a JavaScript (actually TypeScript) emulator 
 ## Implementation
 
 My purpose here is to learn more about how the AGC worked, and in doing so perhaps contribute to the community of knowledge around it. It's a basic enough machine that a person can understand most of its hardware and software, but complex and important enough to make that effort interesting and worthwhile.
-The emulator is written from scratch based entirely on original Apollo-era documentation from the MIT Instrumentation Laboratory ("IL") and some other more recent third-party sources. (See [Bibliography](#bibliography) for the complete list as of this writing.)
+The emulator is written from scratch based entirely on original Apollo-era documentation from the MIT Instrumentation Laboratory ("IL") and some other more recent third-party sources. (See [Bibliography](#user-content-bibliography) for the complete list as of this writing.)
 
 ## Virtual AGC Project
 
@@ -36,7 +36,7 @@ Step one is in progress. The assembler "yul.js" produces correct binary output f
 [3]: https://github.com/virtualagc/virtualagc/blob/master/Luminary099/Luminary099.binsource
 [4]: https://github.com/smithery1/agc.js/tree/main/src/yul.js/README.md
 
-## Bibliography (#bibliography)
+## Bibliography
 
 B\. Savage and A. Drake, "ACCG4 Basic Training Manual", MIT Instrumentation Laboratory, Cambridge, MA, E-2052, January 1967, http://www.ibiblio.org/apollo/NARA-SW/E-2052.pdf.
 

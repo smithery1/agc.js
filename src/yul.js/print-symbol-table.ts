@@ -1,17 +1,12 @@
 import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
-import { Mode, Options } from './bootstrap'
+import { isGap, isYul, Options, YulVersion } from './bootstrap'
 import * as ops from './operations'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
-import { PrintContext, PrinterContext } from './printer-utils'
+import { PrintContext } from './printer-utils'
 import { SymbolEntry } from './symbol-table'
 import { printTable, TableData } from './table-printer'
-
-const EQUALS_OP = ops.requireOperation('EQUALS')
-const ERASE_OP = ops.requireOperation('ERASE')
-const MINUS_ERASE_OP = ops.requireOperation('=MINUS')
-const PLUS_ERASE_OP = ops.requireOperation('=PLUS')
 
 function cacheSortedTable (pass2: Pass2Output, context: PrintContext): Array<[string, SymbolEntry]> {
   const table = pass2.symbolTable.getTable()
@@ -26,8 +21,8 @@ function cacheSortedTable (pass2: Pass2Output, context: PrintContext): Array<[st
 
 export function printSymbols (pass2: Pass2Output, context: PrintContext): void {
   const sorted = cacheSortedTable(pass2, context)
-  const tableData = context.options.mode === Mode.Yul ? ALL_YUL_TABLE_DATA : ALL_GAP_TABLE_DATA
-  printTable(context.printer, tableData, sorted.values(), context.options)
+  const tableData = isYul(context.options.yulVersion) ? ALL_YUL_TABLE_DATA : ALL_GAP_TABLE_DATA
+  printTable(context, tableData, sorted.values(), context.options)
   context.printer.endPage()
 }
 
@@ -37,17 +32,17 @@ export function printUndefinedSymbols (pass2: Pass2Output, context: PrintContext
 
 export function printUnreferencedSymbols (pass2: Pass2Output, context: PrintContext): void {
   const sorted = cacheSortedTable(pass2, context)
-  printTable(context.printer, UNREF_TABLE_DATA, sorted.values(), context.options)
+  printTable(context, UNREF_TABLE_DATA, sorted.values(), context.options)
   context.printer.endPage()
 }
 
 export function printCrossReference (pass2: Pass2Output, context: PrintContext): void {
   const table = pass2.symbolTable.getTable()
   const sorted = [...table.entries()].sort(valueSort)
-  const def = context.options.yulVersion === 66
+  const def = context.options.yulVersion === YulVersion.Y1966
     ? XREF_YUL_66_TABLE_DATA
-    : (context.options.yulVersion === 67 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
-  printTable(context.printer, def, sorted.values(), context.options)
+    : (context.options.yulVersion === YulVersion.Y1967 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
+  printTable(context, def, sorted.values(), context.options)
   context.printer.endPage()
 
   function valueSort (e1: [string, SymbolEntry], e2: [string, SymbolEntry]): number {
@@ -59,7 +54,7 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
       // It's *almost* but not quite by symbol.
       // See Sunburst37 scans page 1079.
       // Something to look into in more detail at some point.
-      if (context.options.mode === Mode.Gap) {
+      if (isGap(context.options.yulVersion)) {
         const page1 = e1[1].definition.lexedLine.sourceLine.page
         const page2 = e2[1].definition.lexedLine.sourceLine.page
 
@@ -76,24 +71,24 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
 }
 
 export function printTableSummary (pass2: Pass2Output, context: PrintContext): void {
-  printSummary(context.printer, pass2.symbolTable.getTable(), context.options)
+  printSummary(context, pass2.symbolTable.getTable(), context.options)
   context.printer.endPage()
 }
 
-function isEqualsCard (card: any): boolean {
+function isEqualsCard (operations: ops.Operations, card: any): boolean {
   return parse.isClerical(card)
-    && (card.operation.operation === EQUALS_OP
-      || card.operation.operation === MINUS_ERASE_OP
-      || card.operation.operation === PLUS_ERASE_OP)
+    && (card.operation.operation === operations.EQUALS
+      || card.operation.operation === operations.EQ_MINUS
+      || card.operation.operation === operations.EQ_PLUS)
 }
 
-function isEraseCard (card: any): boolean {
-  return parse.isClerical(card) && card.operation.operation === ERASE_OP
+function isEraseCard (operations: ops.Operations, card: any): boolean {
+  return parse.isClerical(card) && card.operation.operation === operations.ERASE
 }
 
-function healthString (entry: SymbolEntry): string {
+function healthString (operations: ops.Operations, entry: SymbolEntry): string {
   if (entry.health === undefined) {
-    return isEqualsCard(entry.definition.card) ? '=' : ' '
+    return isEqualsCard(operations, entry.definition.card) ? '=' : ' '
   } else {
     return entry.health
   }
@@ -119,7 +114,8 @@ function getFirstLastReferences (references: AssembledCard[]): { first: number, 
   return { first, last }
 }
 
-function symbolSeparator (entry: [string, SymbolEntry], lastEntry: [string, SymbolEntry]): boolean {
+function symbolSeparator (
+  context: PrintContext, entry: [string, SymbolEntry], lastEntry: [string, SymbolEntry]): boolean {
   return entry[0].charAt(0) !== lastEntry[0].charAt(0)
 }
 
@@ -155,10 +151,10 @@ const ALL_GAP_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   separator: symbolSeparator
 }
 
-function allGapEntryString (data: [string, SymbolEntry]): string | undefined {
+function allGapEntryString (context: PrintContext, data: [string, SymbolEntry]): string | undefined {
   const symbol = data[0]
   const entry = data[1]
-  const health = healthString(entry)
+  const health = healthString(context.operations, entry)
   const page = entry.definition.lexedLine.sourceLine.page
   const references = entry.references.length
   const firstLast = getFirstLastReferences(entry.references)
@@ -185,6 +181,7 @@ const ALL_YUL_COLUMNS = {
 }
 
 const ALL_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
+  leadGap: 2,
   columns: 3,
   columnWidth: ALL_YUL_COLUMNS.Entry,
   columnGap: 1,
@@ -210,11 +207,11 @@ const ALL_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
 
 const ALL_YUL_EMPTY_REFS = '  -   -   - '
 
-function allYulEntryString (data: [string, SymbolEntry]): string | undefined {
+function allYulEntryString (context: PrintContext, data: [string, SymbolEntry]): string | undefined {
   const symbol = data[0]
   const entry = data[1]
   const health = entry.health === undefined ? ' ' : entry.health
-  const flag = entry.health === undefined && isEqualsCard(entry.definition.card) ? '=' : ' '
+  const flag = entry.health === undefined && isEqualsCard(context.operations, entry.definition.card) ? '=' : ' '
   const page = entry.definition.lexedLine.sourceLine.page
   const references = entry.references.length
   const firstLast = getFirstLastReferences(entry.references)
@@ -260,11 +257,11 @@ const UNREF_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   separator: symbolSeparator
 }
 
-function unrefEntryString (data: [string, SymbolEntry]): string | undefined {
+function unrefEntryString (context: PrintContext, data: [string, SymbolEntry]): string | undefined {
   const symbol = data[0]
   const entry = data[1]
   if (entry.references.length === 0) {
-    const health = healthString(entry)
+    const health = healthString(context.operations, entry)
     const page = entry.definition.lexedLine.sourceLine.page
     return symbol.padEnd(UNREF_COLUMNS.Symbol)
       + ' ' + addressing.asAssemblyString(entry.value).padStart(UNREF_COLUMNS.Value)
@@ -321,9 +318,10 @@ const XREF_YUL_66_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   separator: () => false
 }
 
-function xrefEntryString (data: [string, SymbolEntry]): string | undefined {
+function xrefEntryString (context: PrintContext, data: [string, SymbolEntry]): string | undefined {
   const entry = data[1]
-  if (isEqualsCard(entry.definition.card) || isEraseCard(entry.definition.card)) {
+  if (isEqualsCard(context.operations, entry.definition.card)
+    || isEraseCard(context.operations, entry.definition.card)) {
     const symbol = data[0]
     const def = entry.value
     const page = entry.definition.lexedLine.sourceLine.page
@@ -333,9 +331,10 @@ function xrefEntryString (data: [string, SymbolEntry]): string | undefined {
   }
 }
 
-function xrefYul66EntryString (data: [string, SymbolEntry]): string | undefined {
+function xrefYul66EntryString (context: PrintContext, data: [string, SymbolEntry]): string | undefined {
   const entry = data[1]
-  if (isEqualsCard(entry.definition.card) || isEraseCard(entry.definition.card)) {
+  if (isEqualsCard(context.operations, entry.definition.card)
+    || isEraseCard(context.operations, entry.definition.card)) {
     const symbol = data[0]
     const def = entry.value
     const page = entry.definition.lexedLine.sourceLine.page
@@ -345,17 +344,18 @@ function xrefYul66EntryString (data: [string, SymbolEntry]): string | undefined 
   }
 }
 
-function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>, options: Options): void {
+function printSummary (context: PrintContext, table: Map<string, SymbolEntry>, options: Options): void {
   let normal = 0
   let equals = 0
   table.forEach(entry => {
-    if (isEqualsCard(entry.definition.card)) {
+    if (isEqualsCard(context.operations, entry.definition.card)) {
       ++equals
     } else {
       ++normal
     }
   })
 
+  const printer = context.printer
   const total = normal + equals
   let normalString = normal.toString()
   let equalsString = equals.toString()
@@ -365,7 +365,7 @@ function printSummary (printer: PrinterContext, table: Map<string, SymbolEntry>,
   equalsString = equalsString.padStart(14)
   const totalString = total.toString().padStart(7)
   printer.println('')
-  if (options.mode === Mode.Yul) {
+  if (isYul(options.yulVersion)) {
     if (options.formatted) {
       printer.println('SUMMARY OF SYMBOL TABLE LISTING')
     }

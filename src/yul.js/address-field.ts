@@ -220,7 +220,6 @@ export function resolve (
   } else if (typeof address.value === 'string') {
     const result = table.resolve(address.value, requester)
     if (result === undefined) {
-      getCusses(requester).add(cusses.Cuss2D)
       return undefined
     }
     value = result + offset

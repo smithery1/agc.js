@@ -1,7 +1,8 @@
 import { compat } from '../common/compat'
-import { EolSection, isStderrSection, Mode, Options } from './bootstrap'
+import { EolSection, isStderrSection, isYul, Options } from './bootstrap'
 import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
+import { createOperations, Operations } from './operations'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
 import * as assembly from './print-assembly'
@@ -46,9 +47,6 @@ import { PrintContext, printCuss, PrinterContext } from './printer-utils'
  * - The cell contents
  */
 export default class Assembler {
-  private readonly pass1: Pass1Assembler
-  private readonly pass2: Pass2Assembler
-
   private readonly sectionDispatch = {
     [EolSection.Cusses]: assembly.printCusses,
     [EolSection.Listing]: assembly.printListing,
@@ -67,11 +65,6 @@ export default class Assembler {
     [EolSection.Results]: printResults
   }
 
-  constructor (options: Options) {
-    this.pass1 = new Pass1Assembler(options)
-    this.pass2 = new Pass2Assembler(options)
-  }
-
   /**
    * Runs the assembler on the specified URL, which typically points to a MAIN.agc yaYUL formatted file.
    *
@@ -80,13 +73,16 @@ export default class Assembler {
    */
   async assemble (options: Options): Promise<boolean> {
     try {
-      const pass1Result = await this.pass1.assemble(options.file)
+      const operations = createOperations(options)
+      const pass1 = new Pass1Assembler(operations, options)
+      const pass2 = new Pass2Assembler(operations, options)
+      const pass1Result = await pass1.assemble(options.file)
       if (isCussInstance(pass1Result)) {
         printCuss(pass1Result)
         return false
       }
-      const pass2Result = this.pass2.assemble(pass1Result)
-      this.printOutput(options, pass2Result)
+      const pass2Result = pass2.assemble(pass1Result)
+      this.printOutput(operations, options, pass2Result)
       return pass2Result.fatalCussCount === 0
     } catch (error) {
       compat.log(error.stack)
@@ -94,13 +90,14 @@ export default class Assembler {
     }
   }
 
-  private printOutput (options: Options, pass2: Pass2Output): void {
+  private printOutput (operations: Operations, options: Options, pass2: Pass2Output): void {
     const program = getProgram(options.file)
     const user = compat.username()
     const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
-    const charset = getCharset(options.mode === Mode.Yul ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
+    const charset = getCharset(isYul(options.yulVersion) ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
     const context: PrintContext = {
       options,
+      operations,
       printer,
       charset
     }

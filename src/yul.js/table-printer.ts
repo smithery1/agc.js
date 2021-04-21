@@ -1,8 +1,9 @@
 import { compat } from '../common/compat'
-import { Options } from './bootstrap'
-import { PrinterContext } from './printer-utils'
+import { Options, YulVersion } from './bootstrap'
+import { PrintContext } from './printer-utils'
 
 export interface TableData<Entry> {
+  leadGap?: number
   columns: number
   columnWidth: number
   columnGap?: number
@@ -12,12 +13,13 @@ export interface TableData<Entry> {
   pageFooter?: string[]
   tableHeader?: string
   reflowLastPage?: boolean
-  entryString: (entry: Entry) => string | undefined
-  separator: (entry: Entry, lastEntry: Entry) => boolean
+  entryString: (context: PrintContext, entry: Entry) => string | undefined
+  separator: (context: PrintContext, entry: Entry, lastEntry: Entry) => boolean
 }
 
 export function printTable<Entry> (
-  printer: PrinterContext, tableData: TableData<Entry>, entries: Iterator<Entry>, options: Options): void {
+  context: PrintContext, tableData: TableData<Entry>, entries: Iterator<Entry>, options: Options): void {
+  const printer = context.printer
   let lastEntry: Entry | undefined
   let currentCol = 0
   let currentRow = 0
@@ -31,6 +33,7 @@ export function printTable<Entry> (
   for (let i = 0; i < output.length; i++) {
     output[i] = new Array<string>(columns)
   }
+  const leadGap = ' '.repeat(tableData.leadGap ?? 0)
   const columnSeparator = ' '.repeat(tableData.columnGap ?? 0)
   const separator = '='.repeat(tableData.columnWidth) + columnSeparator
   const tableHeader = tableData.tableHeader === undefined
@@ -40,10 +43,16 @@ export function printTable<Entry> (
 
   for (let next = entries.next(); next.done !== true; next = entries.next()) {
     const entry = next.value
-    const entryString = tableData.entryString(entry)
+    const entryString = tableData.entryString(context, entry)
 
     if (entryString !== undefined) {
-      if (options.formatted && lastEntry !== undefined && tableData.separator(entry, lastEntry)) {
+      if (
+        options.formatted
+        // See Aurora12 p648/649 for an example of YUL not printing a separator as the first entry in a page.
+        // See Luminary099 p1563 for an example of GAP doing so.
+        && (options.yulVersion >= YulVersion.GAP || currentCol > 0 || currentRow > 0)
+        && lastEntry !== undefined
+        && tableData.separator(context, entry, lastEntry)) {
         output[currentRow][currentCol] = separator
         incRow()
       }
@@ -92,7 +101,11 @@ export function printTable<Entry> (
     let rowsLeft = rows === undefined ? output.length : rows
     let rowBreakCount = 0
     output.every(row => {
-      compat.log(...row)
+      if (tableData.leadGap !== undefined) {
+        compat.log(leadGap, ...row)
+      } else {
+        compat.log(...row)
+      }
       if (rowsLeft > 1 && ++rowBreakCount === rowBreaks) {
         compat.log('')
         rowBreakCount = 0

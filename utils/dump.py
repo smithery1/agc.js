@@ -9,6 +9,7 @@ The parity bit is not output.
 import argparse
 import os
 import re
+import sys
 from pathlib import Path
 
 def output(file):
@@ -42,5 +43,11 @@ if __name__ == "__main__":
         metavar = '<AGC binary file>', help = 'the AGC binary file')
     args = arg_parser.parse_args()
 
-    for file in args.file:
-        output(file)
+    try:
+        for file in args.file:
+            output(file)
+    except BrokenPipeError:
+        # https://docs.python.org/3/library/signal.html#note-on-sigpipe
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        sys.exit(0)

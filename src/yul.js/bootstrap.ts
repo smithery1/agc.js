@@ -1,8 +1,18 @@
 import Assembler from './assembler'
 
-export enum Mode {
-  Gap,
-  Yul
+export enum YulVersion {
+  BLK2,
+  Y1966,
+  Y1967,
+  GAP
+}
+
+export function isYul (version: YulVersion): boolean {
+  return version === YulVersion.BLK2 || version === YulVersion.Y1966 || version === YulVersion.Y1967
+}
+
+export function isGap (version: YulVersion): boolean {
+  return version === YulVersion.GAP
 }
 
 export enum EolSection {
@@ -25,8 +35,7 @@ export enum EolSection {
 
 export interface Options {
   file: string
-  mode: Mode
-  yulVersion: number
+  yulVersion: YulVersion
   eol: EolSection[]
   formatted: boolean
 }
@@ -49,7 +58,7 @@ export function isStderrSection (section: EolSection): { section: EolSection, is
  * @returns true iff assembly succeeded without errors
  */
 export default async function assemble (options: Options): Promise<boolean> {
-  const assembler = new Assembler(options)
+  const assembler = new Assembler()
   const result = await assembler.assemble(options)
   return result
 }

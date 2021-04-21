@@ -1,5 +1,6 @@
 import { InputStream } from '../common/compat'
 import * as field from './address-field'
+import { Options } from './bootstrap'
 import * as cusses from './cusses'
 import { lex, LexedLine, LineType } from './lexer'
 import { lexNumeric } from './numeric-card'
@@ -81,7 +82,6 @@ export interface BasicInstructionCard extends AssemblyCard {
   readonly type: CardType.Basic
   readonly operation: OperationField<ops.Basic>
   readonly address?: field.AddressField
-  readonly isExtended: boolean
 }
 
 /**
@@ -120,7 +120,7 @@ export interface AddressConstantCard extends AssemblyCard {
   readonly type: CardType.Address
   readonly operation: OperationField<ops.AddressConstant>
   readonly interpretive?: OperandStackElement
-  readonly address: field.AddressField
+  readonly address?: field.AddressField
 }
 
 /**
@@ -195,7 +195,7 @@ export interface OperandStackElement {
 
 interface ParsedOp<OperationType = ops.Operation> {
   readonly op: OperationType
-  readonly complimented: boolean
+  readonly complemented: boolean
   readonly indexed: boolean
 }
 
@@ -209,16 +209,6 @@ interface ParsedLine {
   lexedLine: LexedLine
   card?: any
 }
-
-const BBCON_OP = ops.requireOperation('BBCON')
-const IAW_OP = ops.requireOperation('P')
-const INDEX_OP = ops.requireOperation('INDEX')
-const ERASE_OP = ops.requireOperation('ERASE')
-const EXTEND_OP = ops.requireOperation('EXTEND')
-const MEMORY_OP = ops.requireOperation('MEMORY')
-const SUBRO_OP = ops.requireOperation('SUBRO')
-const STADR_OP = ops.requireOperation('STADR')
-const STORE_OP = ops.requireOperation('STORE')
 
 /**
  * The parser.
@@ -253,7 +243,7 @@ export class Parser {
   private isStadr: boolean
   private cardCusses: cusses.Cusses
 
-  constructor () {
+  constructor (private readonly operations: ops.Operations, private readonly options: Options) {
     this.interpretiveOperands = []
     this.page = 0
     this.isExtended = false
@@ -350,21 +340,25 @@ export class Parser {
 
   private parseOp (field: string): ParsedOp | cusses.Cuss {
     let input = field
-    const complimented = input.charAt(0) === '-'
+    const complemented = input.charAt(0) === '-'
     const indexed = input.charAt(input.length - 1) === '*'
-    if (complimented) {
+    if (complemented) {
       input = input.substring(1)
     }
     if (indexed) {
       input = input.substring(0, input.length - 1)
     }
 
-    const op = ops.operation(input)
+    let op = this.operations.operation(input)
     if (op === undefined) {
       return cusses.Cuss41
     }
+    // Adjust to extended index if necessary
+    op = this.operations.checkExtendedIndex(op, this.isExtended)
+    // Adjust to interpreter store indexed if necessary
+    op = this.operations.checkIndexedStore(op, indexed)
 
-    return { op, complimented, indexed }
+    return { op, complemented, indexed }
   }
 
   private parseAddressConstantCard (input: LineOp<ops.AddressConstant>): ParsedLine {
@@ -373,11 +367,12 @@ export class Parser {
 
     const operand = input.lexedLine.field3
     // Ref SYM, IIF-5. Special case for BBCON* for checksumming routine.
-    const isBbconStar = input.parsedOp.indexed && input.parsedOp.op === BBCON_OP
-    const operandNecessity = isBbconStar ? ops.Necessity.Never : ops.Necessity.Required
+    const isBbconStar = input.parsedOp.indexed && input.parsedOp.op === this.operations.BBCON
+    // BBCON* and certain Agora-era cards have an undefined address field
+    const operandNecessity = isBbconStar ? ops.Necessity.Never : input.parsedOp.op.addressField
 
     if (isBbconStar) {
-      if (input.parsedOp.complimented) {
+      if (input.parsedOp.complemented) {
         this.cardCusses.add(cusses.Cuss01)
       }
     } else {
@@ -392,16 +387,13 @@ export class Parser {
 
     const pushDown = this.popExplicit(input.parsedOp.op)
     let parsed: field.AddressField | undefined
-    if (operand === undefined) {
-      // BBCON*
-      parsed = { value: 0 }
-    } else {
-      if (input.parsedOp.op === IAW_OP) {
+    if (operand !== undefined) {
+      if (input.parsedOp.op === this.operations.P) {
         if (pushDown === undefined) {
           this.cardCusses.add(cusses.Cuss0E)
           parsed = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
         } else {
-          const indexed = pushDown.operator.indexed && pushDown.operand.index
+          const indexed = pushDown.operator.indexed && pushDown.operand.indexable
           const indexedNecessity = indexed ? ops.Necessity.Required : ops.Necessity.Never
           parsed = field.parse(operand, indexedNecessity, false, this.cardCusses)
         }
@@ -418,7 +410,7 @@ export class Parser {
       type: CardType.Address,
       location: input.location,
       operation: {
-        operation: input.parsedOp.op, complemented: input.parsedOp.complimented, indexed: input.parsedOp.indexed
+        operation: input.parsedOp.op, complemented: input.parsedOp.complemented, indexed: input.parsedOp.indexed
       },
       address: parsed,
       interpretive: pushDown
@@ -451,7 +443,7 @@ export class Parser {
       this.cardCusses.add(cusses.Cuss0F)
     }
 
-    if (input.parsedOp.complimented && input.parsedOp.op.compliment === ops.Necessity.Never) {
+    if (input.parsedOp.complemented && input.parsedOp.op.complement === ops.Necessity.Never) {
       this.cardCusses.add(cusses.Cuss01)
     }
     if (input.parsedOp.indexed && input.parsedOp.op.index === ops.Necessity.Never) {
@@ -466,10 +458,10 @@ export class Parser {
     let parsed: field.AddressField | undefined
     const addressField = input.lexedLine.field3
     if (addressField !== undefined) {
-      if (input.parsedOp.op === SUBRO_OP) {
+      if (input.parsedOp.op === this.operations.SUBRO) {
         parsed = { value: addressField }
       } else {
-        const rangeAllowed = input.parsedOp.op === ERASE_OP || input.parsedOp.op === MEMORY_OP
+        const rangeAllowed = input.parsedOp.op === this.operations.ERASE || input.parsedOp.op === this.operations.MEMORY
         parsed = field.parse(addressField, ops.Necessity.Never, rangeAllowed, this.cardCusses)
       }
       if (parsed === undefined) {
@@ -481,7 +473,7 @@ export class Parser {
       type: CardType.Clerical,
       location: input.location,
       operation: {
-        operation: input.parsedOp.op, complemented: input.parsedOp.complimented, indexed: input.parsedOp.indexed
+        operation: input.parsedOp.op, complemented: input.parsedOp.complemented, indexed: input.parsedOp.indexed
       },
       address: parsed,
       interpretive: pushDown
@@ -493,7 +485,7 @@ export class Parser {
     this.verifyNotExtended()
     this.verifyNotStadr()
 
-    if (input.parsedOp.complimented) {
+    if (input.parsedOp.complemented) {
       this.cardCusses.add(cusses.Cuss01)
     }
 
@@ -526,7 +518,7 @@ export class Parser {
       if (!this.isExtended) {
         this.cardCusses.add(cusses.Cuss43)
       }
-    } else if (input.parsedOp.op !== INDEX_OP) {
+    } else {
       this.verifyNotExtended()
     }
     this.popPushUp()
@@ -545,18 +537,14 @@ export class Parser {
       address = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
     }
 
-    if (input.parsedOp.op === EXTEND_OP) {
-      this.isExtended = true
-    } else if (input.parsedOp.op !== INDEX_OP) {
-      this.isExtended = false
-    }
+    this.isExtended = input.parsedOp.op === this.operations.EXTEND
+      || input.parsedOp.op === this.operations.EXTENDED_INDEX
 
     const card: BasicInstructionCard = {
       type: CardType.Basic,
       location: input.location,
-      operation: { operation: input.parsedOp.op, complemented: input.parsedOp.complimented, indexed: false },
-      address,
-      isExtended: input.parsedOp.op !== EXTEND_OP && this.isExtended
+      operation: { operation: input.parsedOp.op, complemented: input.parsedOp.complemented, indexed: false },
+      address
     }
     return { lexedLine: input.lexedLine, card }
   }
@@ -604,7 +592,7 @@ export class Parser {
       this.pushInterpretiveOperand(lhs, lhs.operation.operand1)
     }
 
-    this.isStadr = rhs.operation === STADR_OP
+    this.isStadr = rhs.operation === this.operations.STADR
 
     const card: InterpretiveInstructionCard = {
       type: CardType.Interpretive,
@@ -618,7 +606,7 @@ export class Parser {
   private parseStoreInstruction (input: LineOp<ops.Interpretive>): ParsedLine {
     this.validateInterpretiveOp(input.parsedOp)
 
-    const compliment = this.isStadr
+    const complemented = this.isStadr
     this.isStadr = false
 
     const operand = input.lexedLine.field3
@@ -628,20 +616,20 @@ export class Parser {
       return { lexedLine: input.lexedLine }
     }
 
-    // STORE can take an indexed first word but doesn't use '*', so always allow indexing for STORE.
-    const isStore = input.parsedOp.op === STORE_OP
-    // Others must have '*' set and be indexable on the first operand.
-    const otherIndexable = (input.parsedOp.indexed && input.parsedOp.op.operand1.index)
-    const indexable = isStore ? ops.Necessity.Optional : (otherIndexable ? ops.Necessity.Required : ops.Necessity.Never)
-    const fieldParsed = field.parse(operand, indexable, false, this.cardCusses)
+    // STORE and BLK2 STODL and STOVL can take an indexed first word but don't use '*', so allow indexing for them.
+    const indexNecessity = this.operations.storeFirstWordIndexable(input.parsedOp.op)
+    const fieldParsed = field.parse(operand, indexNecessity, false, this.cardCusses)
     if (fieldParsed === undefined) {
       return { lexedLine: input.lexedLine }
     }
 
-    // Set operator to indexed if it had a '*' or was a STORE with an indexed word.
-    const indexed = input.parsedOp.indexed || fieldParsed.indexRegister !== undefined
-    const lhs = { operation: input.parsedOp.op, complemented: compliment, indexed }
-    this.pushInterpretiveOperand(lhs, input.parsedOp.op.operand2)
+    let operation = input.parsedOp.op
+    // Set operator to the indexed one if the address was indexed
+    if (fieldParsed.indexRegister !== undefined) {
+      operation = this.operations.storeFirstWordIndexed(input.parsedOp.op, fieldParsed.indexRegister)
+    }
+    const lhs = { operation, complemented, indexed: input.parsedOp.indexed }
+    this.pushInterpretiveOperand(lhs, operation.operand2)
 
     const card: InterpretiveInstructionCard = {
       type: CardType.Interpretive,
@@ -653,13 +641,13 @@ export class Parser {
   }
 
   validateInterpretiveOp (parsedOp: ParsedOp<ops.Interpretive>): void {
-    if (parsedOp.complimented) {
+    if (parsedOp.complemented) {
       this.cardCusses.add(cusses.Cuss06)
     }
     if (parsedOp.indexed) {
-      const op1Indexed = parsedOp.op.operand1?.index ?? false
-      const op2Indexed = parsedOp.op.operand2?.index ?? false
-      if (!op1Indexed && !op2Indexed) {
+      const op1Indexable = parsedOp.op.operand1?.indexable ?? false
+      const op2Indexable = parsedOp.op.operand2?.indexable ?? false
+      if (!op1Indexable && !op2Indexable) {
         this.cardCusses.add(cusses.Cuss0A)
       }
     }
@@ -675,7 +663,7 @@ export class Parser {
   private popExplicit (op: ops.Operation): OperandStackElement | undefined {
     let element: OperandStackElement | undefined
     let count = op.words
-    const allowIndexed = op === IAW_OP
+    const allowIndexed = op === this.operations.P
     while (count-- > 0) {
       const popped = this.interpretiveOperands.pop()
       if (popped === undefined) {
