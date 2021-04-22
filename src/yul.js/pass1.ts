@@ -319,7 +319,7 @@ export class Pass1Assembler {
       return
     }
 
-    const address = this.cells.findFree(bankRange)
+    const address = this.cells.findFirstFree(bankRange)
     if (address !== undefined) {
       assembled.refAddress = address
       assembled.sBank = sBank ?? 0
@@ -349,7 +349,7 @@ export class Pass1Assembler {
       return
     }
 
-    const address = this.cells.findFree(bankRange)
+    const address = this.cells.findFirstFree(bankRange)
     if (address !== undefined) {
       assembled.refAddress = address
       assembled.extent = 0

@@ -39,6 +39,7 @@ export class PrinterContext {
   private output: (...data: any[]) => void
   private pageDirty = false
   private pageBreak = false
+  private separator = false
   private page = 1
 
   constructor (revision: string, program: string, user: string, part: string, formatted: boolean) {
@@ -60,9 +61,15 @@ export class PrinterContext {
   println (...data: any[]): void {
     if (this.pageBreak) {
       this.pageBreak = false
-      this.output('')
+      if (this.pageDirty) {
+        this.pageDirty = false
+      }
+      this.output()
       this.output(PAGE_BREAK)
       this.printHeader()
+    } else if (this.separator) {
+      this.separator = false
+      this.output()
     }
     if (this.formatted || data.length !== 1 || data[0] !== '') {
       this.output(...data)
@@ -70,11 +77,25 @@ export class PrinterContext {
     }
   }
 
+  printLeadingSeparator (): void {
+    this.separator = true
+  }
+
+  printTrailingSeparator (): void {
+    if (this.pageDirty) {
+      this.output()
+    }
+  }
+
   endPage (nextPage?: number): void {
     if (this.formatted && (this.pageDirty || this.page !== (nextPage ?? this.page))) {
-      this.pageDirty = false
       this.pageBreak = true
-      this.page = nextPage ?? this.page + 1
+      this.separator = false
+      if (nextPage !== undefined) {
+        this.page = nextPage
+      } else if (this.pageDirty) {
+        this.page = nextPage ?? this.page + 1
+      }
     }
   }
 
@@ -88,7 +109,7 @@ export class PrinterContext {
       const spacing = ' '.repeat(Math.max(0, occupied))
 
       this.output(this.header, time, spacing, 'PAGE', this.page.toString().padStart(4))
-      this.output('')
+      this.output()
     }
   }
 }

@@ -1,5 +1,4 @@
-import { compat } from '../common/compat'
-import { Options, YulVersion } from './bootstrap'
+import { YulVersion } from './bootstrap'
 import { PrintContext } from './printer-utils'
 
 export interface TableData<Entry> {
@@ -18,8 +17,9 @@ export interface TableData<Entry> {
 }
 
 export function printTable<Entry> (
-  context: PrintContext, tableData: TableData<Entry>, entries: Iterator<Entry>, options: Options): void {
+  context: PrintContext, tableData: TableData<Entry>, entries: Iterator<Entry>): void {
   const printer = context.printer
+  const options = context.options
   let lastEntry: Entry | undefined
   let currentCol = 0
   let currentRow = 0
@@ -33,12 +33,13 @@ export function printTable<Entry> (
   for (let i = 0; i < output.length; i++) {
     output[i] = new Array<string>(columns)
   }
-  const leadGap = ' '.repeat(tableData.leadGap ?? 0)
+  const leadGap = ' '.repeat((tableData.leadGap ?? 1) - 1)
+  const fullLeadGap = ' '.repeat(tableData.leadGap ?? 0)
   const columnSeparator = ' '.repeat(tableData.columnGap ?? 0)
   const separator = '='.repeat(tableData.columnWidth) + columnSeparator
   const tableHeader = tableData.tableHeader === undefined
     ? undefined
-    : (tableData.tableHeader + columnSeparator + ' ').repeat(columns)
+    : fullLeadGap + (tableData.tableHeader + columnSeparator + ' ').repeat(columns)
   let page = 0
 
   for (let next = entries.next(); next.done !== true; next = entries.next()) {
@@ -49,7 +50,7 @@ export function printTable<Entry> (
       if (
         options.formatted
         // See Aurora12 p648/649 for an example of YUL not printing a separator as the first entry in a page.
-        // See Luminary099 p1563 for an example of GAP doing so.
+        // See Luminary099 p1563 for an example of GAP doing printing one.
         && (options.yulVersion >= YulVersion.GAP || currentCol > 0 || currentRow > 0)
         && lastEntry !== undefined
         && tableData.separator(context, entry, lastEntry)) {
@@ -90,11 +91,11 @@ export function printTable<Entry> (
     if (options.formatted || page === 0) {
       if (options.formatted && tableData.pageHeader !== undefined) {
         tableData.pageHeader.forEach(header => printer.println(header))
-        printer.println('')
+        printer.println()
       }
       if (options.formatted && tableHeader !== undefined) {
         printer.println(tableHeader)
-        printer.println('')
+        printer.println()
       }
     }
 
@@ -102,19 +103,19 @@ export function printTable<Entry> (
     let rowBreakCount = 0
     output.every(row => {
       if (tableData.leadGap !== undefined) {
-        compat.log(leadGap, ...row)
+        printer.println(leadGap, ...row)
       } else {
-        compat.log(...row)
+        printer.println(...row)
       }
       if (rowsLeft > 1 && ++rowBreakCount === rowBreaks) {
-        compat.log('')
+        printer.println()
         rowBreakCount = 0
       }
       return --rowsLeft > 0
     })
 
     if (options.formatted && tableData.pageFooter !== undefined) {
-      printer.println('')
+      printer.println()
       tableData.pageFooter.forEach(footer => printer.println(footer))
     }
 

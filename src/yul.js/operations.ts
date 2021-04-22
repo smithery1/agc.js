@@ -6,7 +6,7 @@
 // implemented.
 //
 
-import { Options, YulVersion } from './bootstrap'
+import { isBlk2, Options } from './bootstrap'
 
 /**
  * The requirements for the presence of field.
@@ -203,7 +203,7 @@ function IO (
 }
 
 export function createOperations (options: Options): Operations {
-  return options.yulVersion <= YulVersion.BLK2 ? new Blk2Operations() : new AgcOperations()
+  return isBlk2(options.yulVersion) ? new Blk2Operations() : new AgcOperations()
 }
 
 export function isBlk2Operations (ops: Operations): ops is Blk2Operations {
@@ -757,7 +757,7 @@ export abstract class Operations {
   readonly SSP = this.addInterpretiveIndexable('SSP', '11', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, false))
   readonly STADR = this.addInterpretiveUnaryRhs('STADR', '32')
   // readonly STCALL = this.addInterpretiveStore('STCALL', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  // Store indexing is a holdover from BLK2 - implicit based on the operand structure for its only IAW
+  // Store indexing is a holdover from BLK2 - implicit based on the operand structure of its only IAW.
   // The appropriate store ts code instruction will be chosen by the parser based on whether its IAW is indexed or not.
   // All store instruction operands but STCALL are marked as indexable, however, since that affects how they are encoded.
   readonly STORE = this.addInterpretiveStore('STORE', '0', IO(InterpretiveOperandType.Address, false, true, false, true, false))
@@ -829,7 +829,7 @@ export abstract class Operations {
 }
 
 export class Blk2Operations extends Operations {
-  // Ref LIST_PROCESSING_INTERPRETER MISCJUMP table vs INTERPRETER for later code bases.
+  // Ref  MISCJUMP table in Aurora 12 for LIST_PROCESSING_INTERPRETER vs INTERPRETER for later code bases.
   // CALL/ITA and RTB/BHIZ are swapped in Aurora 12
   readonly CALL = this.addInterpretiveMiscRhs('CALL', '30', IO(InterpretiveOperandType.Address, false, false, true, true, true))
   readonly CALRB = this.alias(this.CALL, 'CALRB')
@@ -840,7 +840,7 @@ export class Blk2Operations extends Operations {
 
   // Ref BTM p2-10 for BLK2 specific store format
   readonly STCALL = this.addInterpretiveStore('STCALL', '17', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  // This is returned for a lookup of 'STODL'. The parser will call checkIndexedStore to adjust it.
+  // This is returned for a lookup of 'STODL'. The parser will call checkIndexedStore and storeFirstWordIndexed to adjust it.
   readonly STODL_3 = this.addInterpretiveStore('STODL', '3', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
   readonly STODLS = [
     // Not indexed
@@ -857,7 +857,7 @@ export class Blk2Operations extends Operations {
     this.createInterpretiveStore('STODL', '10', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
   ]
 
-  // This is returned for a lookup of 'STOVL'. The parser will call checkIndexedStore to adjust it.
+  // This is returned for a lookup of 'STOVL'. The parser will call checkIndexedStore and storeFirstWordIndexed to adjust it.
   readonly STOVL_11 = this.addInterpretiveStore('STOVL', '11', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
   readonly STOVLS = [
     // Not indexed

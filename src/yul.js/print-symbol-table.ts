@@ -1,6 +1,7 @@
 import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
 import { isGap, isYul, Options, YulVersion } from './bootstrap'
+import { h800Group } from './charset'
 import * as ops from './operations'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
@@ -21,9 +22,12 @@ function cacheSortedTable (pass2: Pass2Output, context: PrintContext): Array<[st
 
 export function printSymbols (pass2: Pass2Output, context: PrintContext): void {
   const sorted = cacheSortedTable(pass2, context)
-  const tableData = isYul(context.options.yulVersion) ? ALL_YUL_TABLE_DATA : ALL_GAP_TABLE_DATA
-  printTable(context, tableData, sorted.values(), context.options)
-  context.printer.endPage()
+  if (context.options.yulVersion <= YulVersion.B1965) {
+    printB1965Symbols(context, sorted.values())
+  } else {
+    const tableData = isYul(context.options.yulVersion) ? ALL_YUL_TABLE_DATA : ALL_GAP_TABLE_DATA
+    printTable(context, tableData, sorted.values())
+  }
 }
 
 export function printUndefinedSymbols (pass2: Pass2Output, context: PrintContext): void {
@@ -32,8 +36,7 @@ export function printUndefinedSymbols (pass2: Pass2Output, context: PrintContext
 
 export function printUnreferencedSymbols (pass2: Pass2Output, context: PrintContext): void {
   const sorted = cacheSortedTable(pass2, context)
-  printTable(context, UNREF_TABLE_DATA, sorted.values(), context.options)
-  context.printer.endPage()
+  printTable(context, UNREF_TABLE_DATA, sorted.values())
 }
 
 export function printCrossReference (pass2: Pass2Output, context: PrintContext): void {
@@ -42,8 +45,7 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
   const def = context.options.yulVersion === YulVersion.Y1966
     ? XREF_YUL_66_TABLE_DATA
     : (context.options.yulVersion === YulVersion.Y1967 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
-  printTable(context, def, sorted.values(), context.options)
-  context.printer.endPage()
+  printTable(context, def, sorted.values())
 
   function valueSort (e1: [string, SymbolEntry], e2: [string, SymbolEntry]): number {
     const value1 = e1[1].value
@@ -72,7 +74,6 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
 
 export function printTableSummary (pass2: Pass2Output, context: PrintContext): void {
   printSummary(context, pass2.symbolTable.getTable(), context.options)
-  context.printer.endPage()
 }
 
 function isEqualsCard (operations: ops.Operations, card: any): boolean {
@@ -347,9 +348,13 @@ function xrefYul66EntryString (context: PrintContext, data: [string, SymbolEntry
 function printSummary (context: PrintContext, table: Map<string, SymbolEntry>, options: Options): void {
   let normal = 0
   let equals = 0
+  let unreferenced = 0
   table.forEach(entry => {
     if (isEqualsCard(context.operations, entry.definition.card)) {
       ++equals
+      if (entry.references.length === 0) {
+        ++unreferenced
+      }
     } else {
       ++normal
     }
@@ -357,19 +362,34 @@ function printSummary (context: PrintContext, table: Map<string, SymbolEntry>, o
 
   const printer = context.printer
   const total = normal + equals
+  let unrefString = ''
+  const isB1965 = context.options.yulVersion <= YulVersion.B1965
+  if (isB1965) {
+    equals -= unreferenced
+    unrefString = unreferenced.toString()
+  }
   let normalString = normal.toString()
   let equalsString = equals.toString()
-  const len = Math.max(normalString.length, equalsString.length)
+  const len = Math.max(normalString.length, equalsString.length, unrefString.length)
   const line = '-'.repeat(len).padStart(14)
   normalString = normalString.padStart(14)
   equalsString = equalsString.padStart(14)
+  unrefString = unrefString.padStart(14)
   const totalString = total.toString().padStart(7)
-  printer.println('')
+  printer.endPage()
   if (isYul(options.yulVersion)) {
     if (options.formatted) {
-      printer.println('SUMMARY OF SYMBOL TABLE LISTING')
+      if (isB1965) {
+        printer.println('SUMMARY OF SYMBOL TABLE ANALYSIS')
+      } else {
+        printer.println('SUMMARY OF SYMBOL TABLE LISTING')
+      }
     }
     printer.println('')
+    if (isB1965) {
+      printer.println(unrefString, 'DEFINED BY EQUALS BUT NEVER REFERENCED')
+      printer.println('')
+    }
     printer.println(equalsString, ' DEFINED BY EQUALS')
     printer.println('')
     printer.println(normalString, ' NORMALLY DEFINED')
@@ -387,5 +407,83 @@ function printSummary (context: PrintContext, table: Map<string, SymbolEntry>, o
     printer.println(line)
     printer.println('')
     printer.println('TOTAL:', totalString)
+  }
+}
+
+const ALL_B1965_COLUMNS = {
+  Symbol: 8,
+  Def: 7,
+  Health: 75,
+  Page: 4
+}
+const ALL_B1965_HEADER = ' SYMBOL    DEFINITION   ' + 'HEALTH OF DEFINITION'.padEnd(ALL_B1965_COLUMNS.Health) + ' PAGE'
+const ALL_B1965_ROWS = 50
+function printB1965Symbols (context: PrintContext, entries: Iterator<[string, SymbolEntry]>): void {
+  const printer = context.printer
+  let row = 0
+  let lastSymbol: string | undefined
+
+  if (context.options.formatted) {
+    printer.endPage()
+    printer.println(ALL_B1965_HEADER)
+    printer.println()
+  }
+
+  for (let next = entries.next(); next.done !== true; next = entries.next()) {
+    const symbol = next.value[0].padEnd(ALL_B1965_COLUMNS.Symbol)
+    const entry = next.value[1]
+    const def = addressing.asAssemblyString(entry.value).padStart(ALL_B1965_COLUMNS.Def)
+    const health = healthString(context.operations, entry).padEnd(ALL_B1965_COLUMNS.Health)
+    const page = entry.definition.lexedLine.sourceLine.page.toString().padStart(ALL_B1965_COLUMNS.Page)
+
+    if (lastSymbol !== undefined) {
+      let skipLines = 0
+
+      if (symbol.charAt(0) !== lastSymbol.charAt(0)) {
+        skipLines = 2
+      } else if (h800Group(symbol) !== h800Group(lastSymbol)) {
+        skipLines = 1
+      }
+
+      if (skipLines > 0) {
+        row += skipLines
+        if (row < ALL_B1965_ROWS) {
+          while (skipLines > 0) {
+            printer.println()
+            --skipLines
+          }
+        } else {
+          row = ALL_B1965_ROWS
+        }
+      }
+    }
+
+    if (row >= ALL_B1965_ROWS) {
+      row = 0
+      if (context.options.formatted) {
+        printer.endPage()
+        printer.println(ALL_B1965_HEADER)
+        printer.println()
+      }
+    }
+
+    printer.println(symbol, '  ', def, '   ', health, page)
+    lastSymbol = symbol
+    ++row
+  }
+
+  function healthString (operations: ops.Operations, entry: SymbolEntry): string {
+    if (entry.health === undefined) {
+      if (isEqualsCard(operations, entry.definition.card)) {
+        if (entry.references.length === 0) {
+          return 'DEFINED BY EQUALS BUT NEVER REFERRED TO'
+        } else {
+          return 'DEFINED BY EQUALS'
+        }
+      }
+      return 'NORMALLY DEFINED'
+    } else {
+      return entry.health
+    }
   }
 }

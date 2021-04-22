@@ -62,7 +62,7 @@ export default class Assembler {
     [EolSection.OctalListing]: cells.printOctalListing,
     [EolSection.OctalCompact]: cells.printOctalListingCompact,
     [EolSection.Occupied]: cells.printOccupied,
-    [EolSection.Results]: printResults
+    [EolSection.Results]: assembly.printResults
   }
 
   /**
@@ -124,63 +124,5 @@ export default class Assembler {
       }
       return programMatch[1]
     }
-  }
-}
-
-const NO_CUSSES = ['GOOD', 'SUPERB']
-const NON_FATAL = ['FAIR', 'SO-SO']
-const FATAL_1 = ['BAD', 'DISMAL']
-const FATAL_2 = ['LOUSY', 'AWFUL']
-const FATAL_3 = ['ROTTEN', 'VILE']
-const FATAL_4 = ['BILIOUS', 'PUTRID']
-const FATAL_MAX = 'YUCCCHHHH'
-
-// Not quite exact, but in the spirit of Ref https://www.ibiblio.org/apollo/YUL/01%20-%20Intro/yul-0013.jpg
-function printResults (pass2: Pass2Output, context: PrintContext): void {
-  let result: string
-  let manufacturable = ''
-
-  if (pass2.fatalCussCount > 999) {
-    result = FATAL_MAX
-  } else {
-    const symbolTableSize = pass2.symbolTable.getTable().size.toString(8)
-    const symbolTableUnits = symbolTableSize.charAt(symbolTableSize.length - 1)
-    const lastCodePage = pass2.cards[pass2.cards.length - 1].lexedLine.sourceLine.page.toString()
-    const lastCodePageUnits = lastCodePage.charAt(lastCodePage.length - 1)
-    let list: number
-    if ((inSet(symbolTableUnits) && !inSet(lastCodePageUnits))
-      || (!inSet(symbolTableUnits) && inSet(lastCodePageUnits))) {
-      list = 0
-    } else {
-      list = 1
-    }
-
-    let quality: string[]
-    if (pass2.fatalCussCount === 0 && pass2.nonFatalCussCount === 0) {
-      quality = NO_CUSSES
-      manufacturable = ' AND MANUFACTURABLE'
-    } else if (pass2.fatalCussCount === 0) {
-      quality = NON_FATAL
-      manufacturable = ' AND MANUFACTURABLE'
-    } else if (pass2.fatalCussCount <= 2) {
-      quality = FATAL_1
-    } else if (pass2.fatalCussCount <= 9) {
-      quality = FATAL_2
-    } else if (pass2.fatalCussCount <= 99) {
-      quality = FATAL_3
-    } else {
-      quality = FATAL_4
-    }
-
-    result = quality[list]
-  }
-
-  const totalCusses = pass2.fatalCussCount + pass2.nonFatalCussCount
-  const cussed = totalCusses === 0 ? 'NO ' : totalCusses.toString()
-  context.printer.println(`ASSEMBLY WAS ${result}${manufacturable}. ${cussed} LINES WERE CUSSED.`)
-  context.printer.endPage()
-
-  function inSet (digit: string): boolean {
-    return digit === '2' || digit === '3' || digit === '6' || digit === '7'
   }
 }

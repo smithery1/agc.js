@@ -254,3 +254,8 @@ function compareH800 (str1: string, str2: string): number {
 }
 
 const H800_CHARSET: CharSet = { compare: compareH800 }
+
+export function h800Group (s: string): number {
+  const code = convertH800(s.length <= 1 ? 32 : s.charCodeAt(1))
+  return Math.floor(code / 16)
+}

@@ -1,14 +1,23 @@
 import Assembler from './assembler'
 
 export enum YulVersion {
-  BLK2,
+  B1965,
+  B1966,
   Y1966,
   Y1967,
   GAP
 }
 
+export function isBlk2 (version: YulVersion): boolean {
+  return version <= YulVersion.B1966
+}
+
 export function isYul (version: YulVersion): boolean {
-  return version === YulVersion.BLK2 || version === YulVersion.Y1966 || version === YulVersion.Y1967
+  return version <= YulVersion.Y1967
+}
+
+export function isYulNonBlk2 (version: YulVersion): boolean {
+  return isYul(version) && !isBlk2(version)
 }
 
 export function isGap (version: YulVersion): boolean {
@@ -57,7 +66,7 @@ export function isStderrSection (section: EolSection): { section: EolSection, is
  * @param options assemble and output options
  * @returns true iff assembly succeeded without errors
  */
-export default async function assemble (options: Options): Promise<boolean> {
+export async function assemble (options: Options): Promise<boolean> {
   const assembler = new Assembler()
   const result = await assembler.assemble(options)
   return result

@@ -41,7 +41,7 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
   const def = isYul(context.options.yulVersion) ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
   let rowCount = 1
 
-  printTable(context, def, entries(), context.options)
+  printTable(context, def, entries())
 
   function * entries (): Generator<string[]> {
     yield handle(addressing.TRUE_RANGE_HARDWARE.min, addressing.TRUE_RANGE_SPECIAL.max, MEM_SPECIAL)
@@ -70,7 +70,6 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
     yield ['02,2000', ' TO ', '03,3777', '  ', MEM_SPECIAL]
     yield * checkGap()
     yield * handleRange(addressing.TRUE_RANGE_VARIABLE_FIXED_2, true, MEM_FIXED)
-    context.printer.endPage()
 
     function * handleRange (range: addressing.Range, isSwitchable: boolean, desc: string): Generator<string[]> {
       const minOffset = addressing.memoryOffset(range.min)
@@ -159,6 +158,12 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
   let row = 0
   let separator = 0
 
+  if (context.options.formatted) {
+    context.printer.endPage()
+    context.printer.println(header)
+    context.printer.println('')
+  }
+
   // Ref SYM, IIF
   for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 256) {
     if (isParagraphEmpty(i, cells)) {
@@ -171,8 +176,8 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
       separator = 1
     }
     if (row >= rowsPerPage) {
-      context.printer.endPage()
       if (context.options.formatted) {
+        context.printer.endPage()
         context.printer.println(header)
         context.printer.println('')
       }
@@ -211,8 +216,6 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
       )
     }
   }
-
-  context.printer.endPage()
 }
 
 const OCTAL_LISTING_COLUMNS = {
@@ -233,16 +236,14 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
     printParagraph(i, cells)
   }
 
-  context.printer.endPage()
-
   function printParagraph (startIndex: number, cells: Cell[]): void {
     const paragraph = addressing.paragraph(addressing.memoryAddress(startIndex))
     if (paragraph === undefined || isParagraphEmpty(startIndex, cells)) {
       return
     }
 
-    context.printer.endPage()
     if (context.options.formatted) {
+      context.printer.endPage()
       context.printer.println(
         `OCTAL LISTING ${ofFor} PARAGRAPH #`,
         paragraph.toString(8).padStart(OCTAL_LISTING_COLUMNS.Paragraph, '0') + ',',
@@ -309,7 +310,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
         type = 'C:'
       } else if (parse.isClerical(card)) {
         if (card.operation.operation === context.operations.BNKSUM) {
-          type = 'CKSUM'
+          type = 'CKSM'
         } else {
           type = 'C:'
         }
@@ -324,7 +325,9 @@ export function printOctalListingCompact (pass2: Pass2Output, context: PrintCont
   const cells = pass2.cells.getCells()
 
   if (context.options.formatted) {
-    context.printer.println('OCTAL COMPACT LISTING - ADDRESS 0 1 2 3 4 5 6 7')
+    context.printer.endPage()
+    context.printer.println('OCTAL COMPACT LISTING')
+    context.printer.println('ADDRESS   0     1     2     3     4     5     6     7')
   }
 
   const s4StartIndex = addressing.memoryOffset(addressing.TRUE_RANGE_SUPERBANK_S4.min)
@@ -340,8 +343,6 @@ export function printOctalListingCompact (pass2: Pass2Output, context: PrintCont
   for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 256) {
     printParagraph(i, cells)
   }
-
-  context.printer.endPage()
 
   function printParagraph (startIndex: number, cells: Cell[]): void {
     if (s4Empty && startIndex >= s4StartIndex) {
@@ -444,8 +445,7 @@ export function printOccupied (pass2: Pass2Output, context: PrintContext): void 
     lineCount: 0
   }
 
-  printTable(context, OCCUPIED_TABLE_DATA, entries(), context.options)
-  context.printer.endPage()
+  printTable(context, OCCUPIED_TABLE_DATA, entries())
 
   function * entries (): Generator<[number, OccupiedContext]> {
     const start = addressing.memoryOffset(addressing.FIXED_MEMORY_OFFSET)

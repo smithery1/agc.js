@@ -8,7 +8,7 @@ YUL ran on a [Honeywell 800 Data Processing System](https://en.wikipedia.org/wik
 
 YUL was ported by contractors sometime in 1967 to run on the lab's new IBM 360 Model 75[[2]](#2). It was renamed GAP and several enhancements and a few incompatibilities were introduced. This document and the yul.js source code use the generic "YUL" when referencing an AGC assembler. Where a distinction is necessary, either "GAP" is used or the context makes clear that "YUL" references that particular assembler.
 
-The yul.js program is not an emulation of YUL or GAP, nor does it attempt to reproduce their internals or behavior. It simply reads in source in yaYUL format (see below) and writes out assembled binary. For fun, however, it does mimic some of the original YUL and GAP output. It can run in YUL mode or GAP mode (the default). YUL mode is required for some early code bases.
+The yul.js program is not an emulation of YUL or GAP, nor does it attempt to reproduce their internals or behavior. It simply reads in source in yaYUL format (see below) and writes out assembled binary. For fun, however, it does mimic some of the original YUL and GAP output. It can run in various YUL modes corresponding to versions of the YUL assembler and corresponding code bases, or in GAP mode (the default). The YUL modes are required for some early code bases.
 
 ## Input
 
@@ -52,7 +52,7 @@ The primary intent of yul.js is to assemble the original mission software code. 
 
 ## Running
 
-The program current runs under node.js.
+The program runs with node.js.
 
 1. Install node.js for your OS from [here](https://nodejs.org/en/download/).
 1. Install the Typescript compiler
@@ -62,23 +62,23 @@ The program current runs under node.js.
 1. Install git for your OS from [here](https://git-scm.com/downloads).
 1. Clone the agc.js repo into a local directory. For example, run the following.
 
-        % git clone git@github.com:smithery1/agc.js.git
-
-1. Clone the virtualagc repo into a different local directory. For example, run the following.
-
-        % git clone git@github.com:virtualagc/virtualagc.git
+        % git clone git@github.com:smithery1/agc.js.git ./agc.js
 
 1. Compile yul.js.
 
         % tsc -b agc.js/tsconfig.json
 
-1. Run using node, giving the yaYUL "main" file as an argument.
+1. Clone the virtualagc repo into a different local directory. For example, run the following.
 
-        % node agc.js/build/yul.js/node/index-node.js virtualagc/Luminary099/MAIN.agc
+        % git clone git@github.com:virtualagc/virtualagc.git ./virtualagc
+
+1. Run using node, giving a yaYUL "main" file as an absolute URL argument.
+
+        % node agc.js/build/yul.js/node/index-node.js file:///home/user/virtualagc/Luminary099/MAIN.agc
 
     - Same assembly, but output all the GAP end-of-listing tables to stdout.
 
-            % node agc.js/build/yul.js/node/index-node.js -e +All virtualagc/Luminary099/MAIN.agc
+            % node agc.js/build/yul.js/node/index-node.js -e +All file:///home/user/virtualagc/Luminary099/MAIN.agc
 
     - Show command-line options available to control the behavior and output.
 

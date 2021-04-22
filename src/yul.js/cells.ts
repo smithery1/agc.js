@@ -130,7 +130,7 @@ export class Cells {
    * @returns the value
    */
   value (address: number): number | undefined {
-    return this.cells[addressing.memoryOffset(address)].value
+    return this.cells[addressing.memoryOffset(address)]?.value
   }
 
   /**
@@ -139,9 +139,25 @@ export class Cells {
    * @param bank the bank range to check (inclusive)
    * @returns the address of the first unassigned cell in the specified range, or undefined if all are assigned
    */
-  findFree (bank: { min: number, max: number }): number | undefined {
+  findFirstFree (bank: { min: number, max: number }): number | undefined {
     for (let i = bank.min; i <= bank.max; i++) {
       if (this.cells[addressing.memoryOffset(i)] === undefined) {
+        return i
+      }
+    }
+
+    return undefined
+  }
+
+  /**
+   * Returns the address of the last assigned cell in the specified range, or undefined if all are unassigned.
+   *
+   * @param bank the bank range to check (inclusive)
+   * @returns the address of the last assigned cell in the specified range, or undefined if all are unassigned
+   */
+  findLastUsed (bank: { min: number, max: number }): number | undefined {
+    for (let i = bank.max; i >= bank.min; i--) {
+      if (this.cells[addressing.memoryOffset(i)] !== undefined) {
         return i
       }
     }

@@ -1,7 +1,7 @@
 import * as field from './address-field'
 import * as addressing from './addressing'
 import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses } from './assembly'
-import { Options, YulVersion } from './bootstrap'
+import { isBlk2, isYulNonBlk2, Options, YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType, SourceLine } from './lexer'
@@ -117,7 +117,7 @@ export class Pass2Assembler {
 
     this.output.cards.forEach((card) => {
       if (card.lexedLine.sourceLine.source !== prevSource) {
-        if (this.options.yulVersion > YulVersion.BLK2) {
+        if (isYulNonBlk2(this.options.yulVersion)) {
           this.eBank = 0
         }
         prevSource = card.lexedLine.sourceLine.source
@@ -139,7 +139,7 @@ export class Pass2Assembler {
       this.addCussCounts(card.cusses)
     })
 
-    if (this.options.yulVersion <= YulVersion.BLK2) {
+    if (this.options.yulVersion === YulVersion.B1966) {
       this.addBnkSumsBlk2()
     }
     this.addBnkSums()
@@ -361,7 +361,7 @@ export class Pass2Assembler {
 
     let raw: number
     // Ref BTM p2-10. BLK2 uses a 4 bit op-code and a 10 bit address.
-    if (this.options.yulVersion <= YulVersion.BLK2) {
+    if (isBlk2(this.options.yulVersion)) {
       const ts = (lhs.operation.code ?? 0) << 10
       const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
       raw = ts | (bankAndAddress?.address ?? ERROR_WORD)
@@ -458,9 +458,9 @@ export class Pass2Assembler {
     } else {
       let ebank = this.oneShotEBank
       // Ref SYM, VC-2, which referes to BBCON but 2CADR is just a BBCON and a GENADR.
-      // A preceding one-short EBANK= is present in all code bases after Aurora.
+      // A preceding one-shot EBANK= is present in all code bases after Aurora.
       if (ebank === undefined) {
-        if (this.options.yulVersion === YulVersion.BLK2) {
+        if (isBlk2(this.options.yulVersion)) {
           ebank = this.eBank
         } else {
           getCusses(assembled).add(cusses.Cuss58)
@@ -497,9 +497,9 @@ export class Pass2Assembler {
 
   private onBbcon (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
     let ebank = this.oneShotEBank
-    // Ref SYM, VC-2 implies a preceding one-short EBANK= is required, and it is present in all code bases after Aurora.
+    // Ref SYM, VC-2 implies a preceding one-shot EBANK= is required, and it is present in all code bases after Aurora.
     if (ebank === undefined) {
-      if (this.options.yulVersion === YulVersion.BLK2) {
+      if (isBlk2(this.options.yulVersion)) {
         ebank = this.eBank
       } else {
         getCusses(assembled).add(cusses.Cuss58)
@@ -588,7 +588,7 @@ export class Pass2Assembler {
     // CC: code from interpretive op, which is (RD: rounded, direction)
     // I: 0 for negative shift, 1 for non-negative shift
     // SSSSSSS: amount of shift
-    const prefix = this.options.yulVersion <= YulVersion.BLK2 ? 0 : 0x2000
+    const prefix = isBlk2(this.options.yulVersion) ? 0 : 0x2000
     const code = interpretive?.operator.operation.code ?? 0
     const word = prefix | (code << 8) | (shiftAmount + 129)
     this.setCell(word, 0, card.address?.indexRegister === 2, assembled)
@@ -616,7 +616,7 @@ export class Pass2Assembler {
       }
     } else {
       // Ref SYM, VB-4
-      if (this.options.yulVersion <= YulVersion.BLK2 && isErasable) {
+      if (isBlk2(this.options.yulVersion) && isErasable) {
         const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
         word = bankAndAddress?.address ?? ERROR_WORD
       } else {
@@ -644,7 +644,7 @@ export class Pass2Assembler {
     // However, there are plenty of stores in low memory and references to other banks without
     // an EBANK= update.
 
-    if (this.options.yulVersion <= YulVersion.BLK2) {
+    if (isBlk2(this.options.yulVersion)) {
       const bankAndAddress = addressing.asSwitchedBankAndAddress(trueAddress)
       return bankAndAddress?.address ?? ERROR_WORD
     }
@@ -795,22 +795,23 @@ export class Pass2Assembler {
       return
     }
 
-    const address = this.output.cells.findFree(range)
-    // Need to reserve the last word in the bank for the checksum itself
-    if (address === undefined || address === range.max) {
-      assembled.assemblerContext = '0 WORDS LEFT'
-      assembled.refAddress = undefined
-      assembled.extent = 0
-      this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: range.max })
-      return
-    } else if (address === range.min) {
+    let address = this.output.cells.findLastUsed(range)
+    if (address === undefined) {
       // Do not checksum empty bank
       assembled.assemblerContext = 'NO NEED'
       assembled.refAddress = undefined
       assembled.extent = 0
       return
+    } else if (address >= range.max - 1) {
+      // Need to reserve the last word in the bank for the checksum itself
+      assembled.assemblerContext = '0 WORDS LEFT'
+      assembled.refAddress = undefined
+      assembled.extent = 0
+      this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: range.max })
+      return
     }
 
+    ++address
     const remaining = range.max - address
     assembled.assemblerContext = remaining.toString() + ' WORDS LEFT'
     const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
@@ -819,8 +820,15 @@ export class Pass2Assembler {
       return
     }
 
+    // YUL/GAP output these TC instructions as constants in the octal listing, so pretend they came from a address
+    // constant card.
+    const tcCard: parse.AddressConstantCard = {
+      type: parse.CardType.Address,
+      operation: { operation: this.operations.GENADR, indexed: false, complemented: false }
+    }
     const tcAssembled: AssembledCard = {
       lexedLine: assembled.lexedLine,
+      card: tcCard,
       extent: 1,
       count: 0,
       eBank: assembled.eBank,
@@ -865,9 +873,9 @@ export class Pass2Assembler {
     for (let bank = 0; bank < addressing.NUM_FIXED_BANKS; bank++) {
       const range = addressing.fixedBankRange(bank)
       if (range !== undefined) {
-        const address = this.output.cells.findFree(range)
-        if (address !== undefined && address > range.min && address < range.max) {
-          this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: address })
+        const address = this.output.cells.findLastUsed(range)
+        if (address !== undefined && address < range.max) {
+          this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: address + 1 })
         }
       }
     }

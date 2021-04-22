@@ -1,10 +1,10 @@
 import { argv } from 'process'
 import '../../common/node/compat-node'
-import assemble, * as boot from '../bootstrap'
+import * as boot from '../bootstrap'
 
 const options = parseOptions(argv)
 if (options !== undefined) {
-  assemble(options).then(() => {}, () => {})
+  boot.assemble(options).then(() => {}, () => {})
 }
 
 function parseOptions (argv: string[]): boot.Options | undefined {
@@ -97,29 +97,39 @@ function parseOptions (argv: string[]): boot.Options | undefined {
 
     function addSection (val: string, isStderr: boolean): boolean {
       if (val === 'All') {
-        add(boot.EolSection.ListingWithCusses)
-        add(boot.EolSection.Symbols)
         if (boot.isGap(options.yulVersion)) {
+          add(boot.EolSection.ListingWithCusses)
+          add(boot.EolSection.Symbols)
           add(boot.EolSection.UndefinedSymbols)
           add(boot.EolSection.UnreferencedSymbols)
           add(boot.EolSection.CrossReference)
-        }
-        add(boot.EolSection.TableSummary)
-        if (boot.isYul(options.yulVersion) && options.yulVersion > boot.YulVersion.BLK2) {
-          add(boot.EolSection.CrossReference)
-        }
-        add(boot.EolSection.MemorySummary)
-        if (boot.isGap(options.yulVersion)) {
+          add(boot.EolSection.TableSummary)
+          add(boot.EolSection.MemorySummary)
           add(boot.EolSection.Count)
           add(boot.EolSection.Paragraphs)
           add(boot.EolSection.OctalListing)
-        }
-        add(boot.EolSection.Occupied)
-        if (boot.isYul(options.yulVersion)) {
+          add(boot.EolSection.Occupied)
+          add(boot.EolSection.Results)
+        } else if (boot.isYulNonBlk2(options.yulVersion)) {
+          add(boot.EolSection.ListingWithCusses)
+          add(boot.EolSection.Symbols)
+          add(boot.EolSection.TableSummary)
+          add(boot.EolSection.CrossReference)
+          add(boot.EolSection.MemorySummary)
+          add(boot.EolSection.Occupied)
           add(boot.EolSection.Paragraphs)
           add(boot.EolSection.OctalListing)
+          add(boot.EolSection.Results)
+        } else {
+          add(boot.EolSection.ListingWithCusses)
+          add(boot.EolSection.Symbols)
+          add(boot.EolSection.TableSummary)
+          add(boot.EolSection.MemorySummary)
+          add(boot.EolSection.Occupied)
+          add(boot.EolSection.Paragraphs)
+          add(boot.EolSection.OctalListing)
+          add(boot.EolSection.Results)
         }
-        add(boot.EolSection.Results)
       } else {
         const section = boot.EolSection[val]
         if (section === undefined) {
@@ -220,9 +230,21 @@ function usage (app: string): void {
   [-y|--yul <version>]
     Assembles and outputs using YUL rules for the specific YUL version.
     Versions are:
-      BLK2  Suitable for Agora12.
-      Y1966 Suitable for Sunburst37. Positive bank number based bugger words.
-      Y1967 Suitable for Sunburst120. BANK with an operand updates SBANK.
-      GAP   Suitable for all other versions. This is the default.
+      B1965 Early BLK2, suitable for Retread
+          No checksums
+          EOL output differences vs B1966
+      B1966 Late BLK2, suitable for Agora12
+          Checksums without BNKSUM
+          EBANK= doesn't reset on new log, one shot not required
+          Early version of some interpretive instruction words
+          EOL output differences vs Y1966
+      Y1966 Early YUL, suitable for Sunburst37
+          Positive bank number based checksums
+          EOL output differences vs GAP
+      Y1967 Late YUL, suitable for Sunburst120
+          BANK with an operand updates SBANK
+          EOL output differences vs GAP
+      GAP Suitable for all other versions
+          This is the default
   `)
 }

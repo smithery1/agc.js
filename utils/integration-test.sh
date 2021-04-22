@@ -82,7 +82,7 @@ function runTask
 
     local ARGS="$2"
     [[ -n "$ARGS" ]] && ARGS=" with args $ARGS"
-    echo -n "($NUMBER/$TOTAL) $ASSEMBLER assembing $1$ARGS..."
+    echo -n "($NUMBER/$TOTAL) $ASSEMBLER assembling $1$ARGS..."
     $FUNC "$@" > $TMP_FILE 2>&1
     RESULT=$?
     if (( $RESULT == 0 ))
@@ -132,11 +132,11 @@ function compareAll
     local YF_NAME="yaYUL fork"
     local BS_NAME="binsource "
 
-    compare "$YULJS_OUT" "$YS_NAME" "$YAYUL_FORK_OUT" "$YF_NAME" || FAILED=1
-    compare "$YULJS_OUT" "$YS_NAME" "$YAYUL_MAIN_OUT" "$YM_NAME" || FAILED=1
     [[ -n "$BINSOURCE_OUT" ]] && {
         compare "$YULJS_OUT" "$YS_NAME" "$BINSOURCE_OUT" "$BS_NAME" || FAILED=1
     }
+    compare "$YULJS_OUT" "$YS_NAME" "$YAYUL_FORK_OUT" "$YF_NAME" || FAILED=1
+    compare "$YULJS_OUT" "$YS_NAME" "$YAYUL_MAIN_OUT" "$YM_NAME" || FAILED=1
     compare "$YAYUL_FORK_OUT" "$YF_NAME" "$YAYUL_MAIN_OUT" "$YM_NAME" || FAILED=1
     if [[ -n "$BINSOURCE_OUT" ]]
     then
@@ -173,11 +173,19 @@ function yaYulAssemble
 
 function sanitizeBinsource
 {
-    local INPUT="$1"
-    local OUTPUT="$2"
+    local ARGS="$1"
+    local INPUT="$2"
+    local OUTPUT="$3"
+
+    if [[ "$ARGS" == *--no-checksums* ]]
+    then
+        ARGS="--no-checksums"
+    else
+        ARGS=
+    fi
 
     pushd /tmp > /dev/null || return 1
-    "$OCT2BIN" < "$INPUT" || ( popd > /dev/null; return 1 )
+    "$OCT2BIN" $ARGS < "$INPUT" || ( popd > /dev/null; return 1 )
     popd > /dev/null
     egrep '^([0-9]| *@)' /tmp/oct2bin.proof > "$OUTPUT"
 }
@@ -201,7 +209,7 @@ function testCodeBase
     if [[ -f "$BINSOURCE" ]]
     then
         BINSOURCE_OUT=${BINSOURCE}.oct
-        sanitizeBinsource "$BINSOURCE" "$BINSOURCE_OUT" || return 1
+        sanitizeBinsource "$YAYUL_ARGS" "$BINSOURCE" "$BINSOURCE_OUT" || return 1
     fi
 
     runTask 1 3 yaYUL main yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" || return 1
@@ -226,6 +234,12 @@ function testCodeBase
 
 function runTests
 {
+    local CODELINE
+    local CODE
+    local YULJS_ARGS
+    local YAYUL_ARGS
+    local LINES
+
     for CODELINE in "$@"
     do
         CODELINE=$(echo $CODELINE | sed -e 's@^ *@@' -e 's@ *$@@')
