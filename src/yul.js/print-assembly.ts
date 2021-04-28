@@ -1,10 +1,10 @@
 import { compat } from '../common/compat'
 import { AddressField } from './address-field'
-import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
 import { YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import { LexedLine, LineType } from './lexer'
+import { Memory } from './memory'
 import { InterpretiveType } from './operations'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
@@ -48,6 +48,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
   }
   const refMap = new Map<string, Reference>()
   const operations = context.operations
+  const memory = context.memory
   const printer = context.printer
 
   pass2.cards.forEach(card => {
@@ -171,7 +172,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
       }
 
       if (parse.isClerical(card.card) && card.card.operation.operation === operations.COUNT) {
-        symbol = expandCountSymbol(card.refAddress ?? 0, card.card, symbol)
+        symbol = expandCountSymbol(memory, card.refAddress ?? 0, card.card, symbol)
       }
 
       let ref = refMap.get(symbol)
@@ -233,7 +234,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
   }
 
   function addressString (address?: number): string {
-    return addressing.asAssemblyString(address).padStart(COLUMNS.Address)
+    return context.memory.asAssemblyString(address).padStart(COLUMNS.Address)
   }
 
   function wordString (card: AssembledCard | null, word?: number): string {
@@ -361,7 +362,7 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
     if (parse.isClerical(card.card) && card.card.operation.operation === context.operations.COUNT) {
       currentCount.lastPageEnd = page
       // Field required and verified in parser
-      const symbol = expandCountSymbol(card.refAddress ?? 0, card.card, card.lexedLine.field3 ?? '')
+      const symbol = expandCountSymbol(context.memory, card.refAddress ?? 0, card.card, card.lexedLine.field3 ?? '')
       const lookup = map.get(symbol)
       if (lookup === undefined) {
         currentCount = createCountContext(symbol)
@@ -376,7 +377,7 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
     } else {
       if (card.extent > 0
         && card.refAddress !== undefined
-        && addressing.isFixed(addressing.memoryArea(card.refAddress))) {
+        && context.memory.isFixed(context.memory.memoryType(card.refAddress))) {
         currentCount.lastCount += card.extent
         currentCount.totalCount += card.extent
         currentCount.cumCount += card.extent
@@ -403,9 +404,9 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
   context.printer.endPage()
 }
 
-function expandCountSymbol (address: number, card: parse.ClericalCard, field: string): string {
+function expandCountSymbol (memory: Memory, address: number, card: parse.ClericalCard, field: string): string {
   if (card.operation.indexed) {
-    const bank = addressing.fixedBankNumber(address)
+    const bank = memory.fixedBankNumber(address)
     const bankString = bank === undefined ? '??' : bank.toString(8).padStart(2, '0')
     return field.replace('$$', bankString)
   }

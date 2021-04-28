@@ -829,7 +829,7 @@ export abstract class Operations {
 }
 
 export class Blk2Operations extends Operations {
-  // Ref  MISCJUMP table in Aurora 12 for LIST_PROCESSING_INTERPRETER vs INTERPRETER for later code bases.
+  // Ref MISCJUMP table in LIST_PROCESSING_INTERPRETER for Aurora 12 vs same table in INTERPRETER for later code bases.
   // CALL/ITA and RTB/BHIZ are swapped in Aurora 12
   readonly CALL = this.addInterpretiveMiscRhs('CALL', '30', IO(InterpretiveOperandType.Address, false, false, true, true, true))
   readonly CALRB = this.alias(this.CALL, 'CALRB')
@@ -845,11 +845,11 @@ export class Blk2Operations extends Operations {
   readonly STODLS = [
     // Not indexed
     this.STODL_3,
-    // Indexed on IAW1,X1
+    // Indexed on IAW1,X1, IAW2 not indexed
     this.createInterpretiveStore('STODL', '4', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X2
+    // Indexed on IAW1,X2, IAW2 not indexed
     this.createInterpretiveStore('STODL', '5', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW2
+    // IAW1 not indexed, indexed on IAW2
     this.createInterpretiveStore('STODL', '6', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
     // Indexed on IAW1,X1 and IAW2
     this.createInterpretiveStore('STODL', '7', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
@@ -862,11 +862,11 @@ export class Blk2Operations extends Operations {
   readonly STOVLS = [
     // Not indexed
     this.STOVL_11,
-    // Indexed on IAW1,X1
+    // Indexed on IAW1,X1, IAW2 not indexed
     this.createInterpretiveStore('STOVL', '12', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X2
+    // Indexed on IAW1,X2, IAW2 not indexed
     this.createInterpretiveStore('STOVL', '13', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW2
+    // IAW1 not indexed, indexed on IAW2
     this.createInterpretiveStore('STOVL', '14', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
     // Indexed on IAW1,X1 and IAW2
     this.createInterpretiveStore('STOVL', '15', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),

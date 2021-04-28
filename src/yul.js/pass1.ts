@@ -1,11 +1,11 @@
 import { compat } from '../common/compat'
 import * as field from './address-field'
-import * as addressing from './addressing'
 import { AssembledCard, getCusses } from './assembly'
 import { Options, YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType } from './lexer'
+import { Memory, MemoryType } from './memory'
 import { Operations } from './operations'
 import * as parse from './parser'
 import { Pass1SymbolTable, Pass2SymbolTable } from './symbol-table'
@@ -57,7 +57,8 @@ export class Pass1Assembler {
   private locationCounter: number | undefined
   private hadLocationCounter: boolean
 
-  constructor (private readonly operations: Operations, private readonly options: Options) {
+  constructor (
+    private readonly operations: Operations, private readonly memory: Memory, private readonly options: Options) {
   }
 
   /**
@@ -73,7 +74,7 @@ export class Pass1Assembler {
     }
     this.symbolTable = new Pass1SymbolTable()
     this.cards = []
-    this.cells = new Cells()
+    this.cells = new Cells(this.memory)
     this.urlBase = mainUrl.substring(0, index)
     this.hadLocationCounter = false
 
@@ -285,13 +286,13 @@ export class Pass1Assembler {
     // Note that only references to S3 and S4 change SBANK, references to non-superbank addresses leave it alone.
 
     if (card.address === undefined) {
-      const fixed = addressing.fixedBankNumber(this.locationCounter ?? -1)
+      const fixed = this.memory.fixedBankNumber(this.locationCounter ?? -1)
       if (fixed === undefined) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
       }
       bankNumber = fixed
-      sBank = addressing.fixedBankNumberToBank(bankNumber)?.sBank
+      sBank = this.memory.fixedBankNumberToBank(bankNumber)?.sBank
     } else {
       if (typeof card.address?.value !== 'number') {
         getCusses(assembled).add(cusses.Cuss3F)
@@ -309,11 +310,11 @@ export class Pass1Assembler {
       // YUL 67: Behaves like BANK with no operand
       // Others: Leaves SBANK unchanged
       if (this.options.yulVersion === YulVersion.Y1967) {
-        sBank = addressing.fixedBankNumberToBank(bankNumber)?.sBank
+        sBank = this.memory.fixedBankNumberToBank(bankNumber)?.sBank
       }
     }
 
-    const bankRange = addressing.fixedBankRange(bankNumber)
+    const bankRange = this.memory.fixedBankRange(bankNumber)
     if (bankRange === undefined) {
       getCusses(assembled).add(cusses.Cuss3F)
       return
@@ -343,7 +344,7 @@ export class Pass1Assembler {
       return
     }
 
-    const bankRange = addressing.fixedBankRange(bankNumber)
+    const bankRange = this.memory.fixedBankRange(bankNumber)
     if (bankRange === undefined) {
       getCusses(assembled).add(cusses.Cuss3F)
       return
@@ -394,8 +395,8 @@ export class Pass1Assembler {
         return
       }
 
-      if (!canErase(addressing.memoryArea(start))
-        || !canErase(addressing.memoryArea(start + extent - 1))) {
+      if (!canErase(this.memory.memoryType(start))
+        || !canErase(this.memory.memoryType(start + extent - 1))) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
       }
@@ -406,9 +407,9 @@ export class Pass1Assembler {
 
     this.symbolTable.assignAddress(card.location, assembled)
 
-    function canErase (area: addressing.MemoryArea): boolean {
-      return area === addressing.MemoryArea.Unswitched_Banked_Erasable
-          || area === addressing.MemoryArea.Switched_Erasable
+    function canErase (area: MemoryType): boolean {
+      return area === MemoryType.Unswitched_Banked_Erasable
+          || area === MemoryType.Switched_Erasable
     }
   }
 

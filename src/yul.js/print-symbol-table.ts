@@ -1,4 +1,3 @@
-import * as addressing from './addressing'
 import { AssembledCard } from './assembly'
 import { isGap, isYul, Options, YulVersion } from './bootstrap'
 import { h800Group } from './charset'
@@ -11,13 +10,15 @@ import { printTable, TableData } from './table-printer'
 
 function cacheSortedTable (pass2: Pass2Output, context: PrintContext): Array<[string, SymbolEntry]> {
   const table = pass2.symbolTable.getTable()
-  if (context.sortedSymbolTable === undefined) {
-    context.sortedSymbolTable = [...table.entries()].sort(
+  let sorted = context.cache.get('sortedSymbolTable') as Array<[string, SymbolEntry]>
+  if (sorted === undefined) {
+    sorted = [...table.entries()].sort(
       (e1: [string, SymbolEntry], e2: [string, SymbolEntry]) => {
         return context.charset.compare(e1[0], e2[0])
       })
+    context.cache.set('sortedSymbolTable', sorted)
   }
-  return context.sortedSymbolTable
+  return sorted
 }
 
 export function printSymbols (pass2: Pass2Output, context: PrintContext): void {
@@ -162,7 +163,7 @@ function allGapEntryString (context: PrintContext, data: [string, SymbolEntry]):
   const refsString = references === 0 ? '' : references.toString()
 
   return symbol.padEnd(ALL_GAP_COLUMNS.Symbol)
-    + ' ' + addressing.asAssemblyString(entry.value).padStart(ALL_GAP_COLUMNS.Value)
+    + ' ' + context.memory.asAssemblyString(entry.value).padStart(ALL_GAP_COLUMNS.Value)
     + ' ' + health.padStart(ALL_GAP_COLUMNS.Health)
     + ' ' + page.toString().padStart(ALL_GAP_COLUMNS.Page)
     + ' ' + refsString.padStart(ALL_GAP_COLUMNS.Refs)
@@ -228,7 +229,7 @@ function allYulEntryString (context: PrintContext, data: [string, SymbolEntry]):
 
   return symbol.padEnd(ALL_YUL_COLUMNS.Symbol)
   + ' ' + health.padEnd(ALL_YUL_COLUMNS.Health)
-    + ' ' + addressing.asAssemblyString(entry.value).padStart(ALL_YUL_COLUMNS.Def)
+    + ' ' + context.memory.asAssemblyString(entry.value).padStart(ALL_YUL_COLUMNS.Def)
     + ' ' + page.toString().padStart(ALL_YUL_COLUMNS.Page)
     + refsString
     + ' ' + flag
@@ -265,7 +266,7 @@ function unrefEntryString (context: PrintContext, data: [string, SymbolEntry]): 
     const health = healthString(context.operations, entry)
     const page = entry.definition.lexedLine.sourceLine.page
     return symbol.padEnd(UNREF_COLUMNS.Symbol)
-      + ' ' + addressing.asAssemblyString(entry.value).padStart(UNREF_COLUMNS.Value)
+      + ' ' + context.memory.asAssemblyString(entry.value).padStart(UNREF_COLUMNS.Value)
       + ' ' + health.padStart(UNREF_COLUMNS.Health)
       + ' ' + page.toString().padStart(UNREF_COLUMNS.Page)
   }
@@ -326,7 +327,7 @@ function xrefEntryString (context: PrintContext, data: [string, SymbolEntry]): s
     const symbol = data[0]
     const def = entry.value
     const page = entry.definition.lexedLine.sourceLine.page
-    return addressing.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
+    return context.memory.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
         + ' ' + page.toString().padStart(XREF_COLUMNS.Page)
         + '  ' + symbol.padEnd(XREF_COLUMNS.Symbol)
   }
@@ -340,7 +341,7 @@ function xrefYul66EntryString (context: PrintContext, data: [string, SymbolEntry
     const def = entry.value
     const page = entry.definition.lexedLine.sourceLine.page
     return symbol.padEnd(XREF_COLUMNS.Symbol)
-      + ' ' + addressing.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
+      + ' ' + context.memory.asAssemblyString(def).padStart(XREF_COLUMNS.Def)
         + ' ' + page.toString().padStart(XREF_COLUMNS.Page)
   }
 }
@@ -432,7 +433,7 @@ function printB1965Symbols (context: PrintContext, entries: Iterator<[string, Sy
   for (let next = entries.next(); next.done !== true; next = entries.next()) {
     const symbol = next.value[0].padEnd(ALL_B1965_COLUMNS.Symbol)
     const entry = next.value[1]
-    const def = addressing.asAssemblyString(entry.value).padStart(ALL_B1965_COLUMNS.Def)
+    const def = context.memory.asAssemblyString(entry.value).padStart(ALL_B1965_COLUMNS.Def)
     const health = healthString(context.operations, entry).padEnd(ALL_B1965_COLUMNS.Health)
     const page = entry.definition.lexedLine.sourceLine.page.toString().padStart(ALL_B1965_COLUMNS.Page)
 

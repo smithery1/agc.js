@@ -2,15 +2,16 @@ import { compat } from '../common/compat'
 import { Options } from './bootstrap'
 import { CharSet } from './charset'
 import * as cusses from './cusses'
+import { Memory } from './memory'
 import { Operations } from './operations'
-import { SymbolEntry } from './symbol-table'
 
 export interface PrintContext {
   printer: PrinterContext
   operations: Operations
+  memory: Memory
   options: Options
   charset: CharSet
-  sortedSymbolTable?: Array<[string, SymbolEntry]>
+  cache: Map<string, any>
 }
 
 export function printCuss (instance: cusses.CussInstance): void {

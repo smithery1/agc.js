@@ -1,6 +1,6 @@
-import * as addressing from './addressing'
-import { isGap, isYul } from './bootstrap'
+import { isGap, isYul, YulVersion } from './bootstrap'
 import { Cell } from './cells'
+import * as mem from './memory'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
 import { PrintContext } from './printer-utils'
@@ -30,6 +30,7 @@ const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
   columnWidth: 60,
   columnGap: 4,
   rowsPerPage: 50,
+  rowBreaks: 4,
   reflowLastPage: true,
   pageHeader: ['MEMORY TYPE & AVAILABILITY DISPLAY'],
   entryString: (context: PrintContext, entry: string[]) => entry.join(' ').padEnd(60),
@@ -38,88 +39,106 @@ const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
 
 export function printMemorySummary (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
+  const memory = context.memory
   const def = isYul(context.options.yulVersion) ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
-  let rowCount = 1
 
   printTable(context, def, entries())
 
   function * entries (): Generator<string[]> {
-    yield handle(addressing.TRUE_RANGE_HARDWARE.min, addressing.TRUE_RANGE_SPECIAL.max, MEM_SPECIAL)
-    yield * checkGap()
-    if (isYul(context.options.yulVersion)) {
-      yield * handleRange(
-        {
-          min: addressing.TRUE_RANGE_UNSWITCHED_ERASABLE.min,
-          max: addressing.TRUE_RANGE_SWITCHED_ERASABLE.max
-        },
-        false, MEM_ERASABLE)
-    } else {
-      yield * handleRange(addressing.TRUE_RANGE_UNSWITCHED_ERASABLE, false, MEM_ERASABLE)
-      yield ['']
-      yield * handleRange(addressing.TRUE_RANGE_SWITCHED_ERASABLE, true, MEM_ERASABLE)
-      yield ['']
-    }
-    yield * handleRange(addressing.TRUE_RANGE_FIXED_FIXED, false, MEM_FIXED)
-    yield * checkGap()
-    yield * handleRange(addressing.TRUE_RANGE_VARIABLE_FIXED_1, true, MEM_FIXED)
-    yield * checkGap()
-    // Perhaps have addressing able to express this range along with other high ranges referenced on the actual GAP
-    // version of this page?
-    // They're not used anywhere else however.
-    yield * checkRowCount()
-    yield ['02,2000', ' TO ', '03,3777', '  ', MEM_SPECIAL]
-    yield * checkGap()
-    yield * handleRange(addressing.TRUE_RANGE_VARIABLE_FIXED_2, true, MEM_FIXED)
+    const yul = isYul(context.options.yulVersion)
+    const ranges = memory.memoryRanges()
+    let i = 0
 
-    function * handleRange (range: addressing.Range, isSwitchable: boolean, desc: string): Generator<string[]> {
-      const minOffset = addressing.memoryOffset(range.min)
-      const maxOffset = addressing.memoryOffset(range.max)
-      const fullDesc = isSwitchable && isGap(context.options.yulVersion) ? MEM_SWITCHABLE + ' ' + desc : desc
+    while (i < ranges.length) {
+      const end = endRange(i)
+      const range = combineRanges(ranges[i], ranges[end])
+      if (i > 0 && !yul) {
+        yield ['']
+      }
+      yield * handleRange(range)
+      i = end + 1
+    }
+
+    function endRange (start: number): number {
+      const range = ranges[start]
+      if (range.type === mem.MemoryType.Hardware) {
+        return start + 1
+      } else if (range.type === mem.MemoryType.Unswitched_Banked_Erasable && yul) {
+        while (++start < ranges.length && ranges[start].type !== mem.MemoryType.Fixed_Fixed);
+      } else {
+        while (++start < ranges.length && ranges[start].type === range.type);
+      }
+      return start - 1
+    }
+
+    function combineRanges (start: mem.MemoryRange, end: mem.MemoryRange): mem.MemoryRange {
+      switch (start.type) {
+        case mem.MemoryType.Hardware:
+          return { min: start.min, max: end.max - 1, type: mem.MemoryType.Special_Erasable }
+
+        case mem.MemoryType.Unswitched_Banked_Erasable:
+          return { min: start.min - 1, max: end.max, type: start.type }
+
+        default:
+          return { min: start.min, max: end.max, type: start.type }
+      }
+    }
+
+    function * handleRange (range: mem.MemoryRange): Generator<string[]> {
+      const desc = getDesc(range)
+      if (desc === MEM_SPECIAL) {
+        yield handleAddresses(range.min, range.max, desc)
+        return
+      }
+
+      const minOffset = memory.memoryOffset(range.min)
+      const maxOffset = memory.memoryOffset(range.max)
       let type = cells[minOffset] === undefined ? MEM_AVAIL : MEM_RESERVED
       let rangeStart = minOffset
 
       for (let i = minOffset + 1; i <= maxOffset; i++) {
         if (cells[i] === undefined) {
           if (type === MEM_RESERVED) {
-            yield * checkRowCount()
             const rangeEnd = adjustEnd(i - 1)
-            yield handle(rangeStart, rangeEnd, type, fullDesc)
+            yield handle(rangeStart, rangeEnd, desc, type)
             type = MEM_AVAIL
             rangeStart = rangeEnd + 1
           }
         } else if (type === MEM_AVAIL) {
-          yield * checkRowCount()
-          yield handle(rangeStart, i - 1, type, fullDesc)
+          yield handle(rangeStart, i - 1, desc, type)
           type = MEM_RESERVED
           rangeStart = i
         }
       }
 
-      yield * checkRowCount()
-      yield handle(rangeStart, maxOffset, type, fullDesc)
+      yield handle(rangeStart, maxOffset, desc, type)
     }
 
-    function * checkRowCount (): Generator<string[]> {
-      if (rowCount === 4) {
-        rowCount = 1
-        if (isYul(context.options.yulVersion)) {
-          yield ['']
-        }
-      } else {
-        ++rowCount
-      }
-    }
+    function getDesc (range: mem.MemoryRange): string {
+      switch (range.type) {
+        case mem.MemoryType.Nonexistent:
+        case mem.MemoryType.Hardware:
+        case mem.MemoryType.Special_Erasable:
+          return MEM_SPECIAL
 
-    function * checkGap (): Generator<string[]> {
-      if (isGap(context.options.yulVersion)) {
-        yield ['']
+        case mem.MemoryType.Unswitched_Banked_Erasable:
+          return MEM_ERASABLE
+
+        case mem.MemoryType.Switched_Erasable:
+          return (!yul ? MEM_SWITCHABLE + ' ' : '') + MEM_ERASABLE
+
+        case mem.MemoryType.Fixed_Fixed:
+          return MEM_FIXED
+
+        case mem.MemoryType.Variable_Fixed:
+          return (!yul ? MEM_SWITCHABLE + ' ' : '') + MEM_FIXED
       }
     }
 
     function adjustEnd (max: number): number {
-      // YUL does not consider the checksum cell "used"
+      // Y1966 and earlier do not consider the checksum cell "used"
       const maxCell = cells[max]
-      if (isYul(context.options.yulVersion)
+      if (context.options.yulVersion <= YulVersion.Y1966
         && maxCell !== undefined
         && parse.isClerical(maxCell.definition.card)
         && maxCell.definition.card.operation.operation === context.operations.BNKSUM) {
@@ -128,30 +147,48 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
       return max
     }
 
-    function handle (min: number, max: number, type: string, desc?: string): string[] {
-      const addressMin = addressing.memoryAddress(min)
-      const addressMax = addressing.memoryAddress(max)
-      const endString = addressing.asAssemblyString(addressMax).padStart(7)
-      const startString = (min === max ? '' : addressing.asAssemblyString(addressMin)).padStart(7)
-      const completeDesc = type + (desc === undefined ? '' : ' ' + desc)
+    function handle (min: number, max: number, desc: string, type?: string): string[] {
+      const addressMin = memory.memoryAddress(min)
+      const addressMax = memory.memoryAddress(max)
+      return handleAddresses(addressMin, addressMax, desc, type)
+    }
+
+    function handleAddresses (addressMin: number, addressMax: number, desc: string, type?: string): string[] {
+      const endString = memory.asAssemblyString(addressMax).padStart(7)
+      const startString = (addressMin === addressMax ? '' : memory.asAssemblyString(addressMin)).padStart(7)
+      const completeDesc = (type === undefined ? '' : (type + ' ')) + desc
       return [startString, ' TO ', endString, '  ', completeDesc]
     }
   }
 }
 
-function isParagraphEmpty (start: number, cells: Cell[]): boolean {
-  for (let i = start; i < start + 256; i++) {
-    if (cells[i]?.value !== undefined) {
-      return false
+function cacheUsedParagraphs (cells: Cell[], context: PrintContext): boolean[] {
+  let used = context.cache.get('usedParagraphs') as boolean[]
+  if (used === undefined) {
+    const start = context.memory.fixedMemoryOffset()
+    used = []
+    for (let i = start; i < cells.length; i += 256) {
+      used.push(!isParagraphEmpty(i, cells))
     }
+    context.cache.set('usedParagraphs', used)
   }
-  return true
+  return used
+
+  function isParagraphEmpty (start: number, cells: Cell[]): boolean {
+    for (let i = start; i < start + 256; i++) {
+      if (cells[i]?.value !== undefined) {
+        return false
+      }
+    }
+    return true
+  }
 }
 
 const PARAGRAPHS_HEADER = 'PARAGRAPHS GENERATED FOR THIS ASSEMBLY; ADDRESS LIMITS AND THE MANUFACTURING LOCATION CODE ARE SHOWN FOR EACH'
 
 export function printParagraphs (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
+  const memory = context.memory
   const rowsPerPage = isYul(context.options.yulVersion) ? 50 : 45
 
   const header = PARAGRAPHS_HEADER + (isYul(context.options.yulVersion) ? '.' : '')
@@ -165,8 +202,11 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
   }
 
   // Ref SYM, IIF
-  for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 256) {
-    if (isParagraphEmpty(i, cells)) {
+  const start = memory.fixedMemoryOffset()
+  const used = cacheUsedParagraphs(cells, context)
+  let usedOffset = 0
+  for (let i = start; i < cells.length; i += 256) {
+    if (!used[usedOffset++]) {
       ++separator
       continue
     }
@@ -185,10 +225,10 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
     }
     ++row
 
-    const address = addressing.memoryAddress(i)
-    const paragraph = addressing.paragraph(address)
-    const bankAndAddress = addressing.asBankAndAddress(address)
-    const bank = addressing.fixedBankNumber(address)
+    const address = memory.memoryAddress(i)
+    const paragraph = memory.paragraph(address)
+    const bankAndAddress = memory.asBankAndAddress(address)
+    const bank = memory.fixedBankNumber(address)
 
     if (isGap(context.options.yulVersion) && address === 0x2000) {
       context.printer.println('')
@@ -198,13 +238,13 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
 
     if (paragraph !== undefined && bankAndAddress !== undefined && bank !== undefined) {
       const sRegister = bankAndAddress.address
-      const minString = addressing.asAssemblyString(address).padStart(7)
-      const maxString = addressing.asAssemblyString(address + 255).padStart(7)
+      const minString = memory.asAssemblyString(address).padStart(7)
+      const maxString = memory.asAssemblyString(address + 255).padStart(7)
       const paragraphString = paragraph.toString(8).padStart(3, '0')
-      const module = addressing.hardwareModule(bank)
-      const side = addressing.hardwareSide(sRegister)
-      const set = addressing.hardwareStrand(bank, sRegister)
-      const wires = addressing.hardwareWires(set)
+      const module = memory.hardwareModule(bank)
+      const side = memory.hardwareSide(sRegister)
+      const set = memory.hardwareStrand(bank, sRegister)
+      const wires = memory.hardwareWires(set)
 
       context.printer.println(
         minString, 'TO', maxString,
@@ -228,17 +268,22 @@ const OCTAL_LISTING_COLUMNS = {
 
 export function printOctalListing (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
+  const memory = context.memory
   const ofFor = isYul(context.options.yulVersion) ? 'OF' : 'FOR'
   const punct = isYul(context.options.yulVersion) ? ';' : ','
   const period = isYul(context.options.yulVersion) ? '.' : ''
+  const used = cacheUsedParagraphs(cells, context)
+  let usedOffset = 0
 
-  for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 256) {
+  const start = memory.fixedMemoryOffset()
+  for (let i = start; i < cells.length; i += 256) {
     printParagraph(i, cells)
+    ++usedOffset
   }
 
   function printParagraph (startIndex: number, cells: Cell[]): void {
-    const paragraph = addressing.paragraph(addressing.memoryAddress(startIndex))
-    if (paragraph === undefined || isParagraphEmpty(startIndex, cells)) {
+    const paragraph = memory.paragraph(memory.memoryAddress(startIndex))
+    if (paragraph === undefined || !used[usedOffset]) {
       return
     }
 
@@ -265,8 +310,8 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
       parity: string
     }
 
-    const address = addressing.memoryAddress(startIndex)
-    const addressString = addressing.asAssemblyString(address).padStart(OCTAL_LISTING_COLUMNS.Address, ' ')
+    const address = memory.memoryAddress(startIndex)
+    const addressString = memory.asAssemblyString(address).padStart(OCTAL_LISTING_COLUMNS.Address, ' ')
 
     if (startIndex % 32 === 0) {
       context.printer.println('')
@@ -323,40 +368,39 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
 
 export function printOctalListingCompact (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
+  const memory = context.memory
 
   if (context.options.formatted) {
     context.printer.endPage()
     context.printer.println('OCTAL COMPACT LISTING')
     context.printer.println('ADDRESS   0     1     2     3     4     5     6     7')
   }
-
-  const s4StartIndex = addressing.memoryOffset(addressing.TRUE_RANGE_SUPERBANK_S4.min)
-  const s4EndIndex = addressing.memoryOffset(addressing.TRUE_RANGE_SUPERBANK_S4.max + 1)
-  let s4Empty = true
-  for (let p = s4StartIndex; p < s4EndIndex; p += 256) {
-    if (!isParagraphEmpty(p, cells)) {
-      s4Empty = false
-      break
+  const used = cacheUsedParagraphs(cells, context).slice()
+  const restUnused: boolean[] = []
+  let test = true
+  used.reverse().forEach(element => {
+    if (element) {
+      test = false
     }
-  }
+    restUnused.push(test)
+  })
+  restUnused.reverse()
 
-  for (let i = addressing.FIXED_MEMORY_OFFSET; i < cells.length; i += 256) {
+  let usedOffset = 0
+  const start = memory.fixedMemoryOffset()
+  for (let i = start; i < cells.length && !restUnused[usedOffset++]; i += 256) {
     printParagraph(i, cells)
   }
 
   function printParagraph (startIndex: number, cells: Cell[]): void {
-    if (s4Empty && startIndex >= s4StartIndex) {
-      return
-    }
-
     for (let i = startIndex; i < startIndex + 256; i += 8) {
       printLine(i, cells)
     }
   }
 
   function printLine (startIndex: number, cells: Cell[]): void {
-    const address = addressing.memoryAddress(startIndex)
-    const addressString = addressing
+    const address = memory.memoryAddress(startIndex)
+    const addressString = memory
       .asAssemblyString(address)
       .padStart(OCTAL_LISTING_COLUMNS.Address, ' ')
 
@@ -402,6 +446,7 @@ const OCCUPIED_TABLE_DATA: TableData<[number, OccupiedContext]> = {
 }
 
 function occupiedEntryString (print: PrintContext, data: [number, OccupiedContext]): string | undefined {
+  const memory = print.memory
   const index = data[0]
   const context = data[1]
   const cell = context.cells[index]
@@ -414,16 +459,16 @@ function occupiedEntryString (print: PrintContext, data: [number, OccupiedContex
     context.startIndex = index
 
     if (oldPage > 0) {
-      const endAddress = addressing.memoryAddress(index - 1)
-      const endString = addressing.asAssemblyString(endAddress).padStart(OCCUPIED_COLUMNS.End, ' ')
+      const endAddress = memory.memoryAddress(index - 1)
+      const endString = memory.asAssemblyString(endAddress).padStart(OCCUPIED_COLUMNS.End, ' ')
       if (startIndex === index - 1) {
         return ' '.padStart(OCCUPIED_COLUMNS.Start)
           + ' TO '
           + ' ' + endString.padStart(OCCUPIED_COLUMNS.End)
           + ' ' + oldPage.toString().padStart(OCCUPIED_COLUMNS.Page)
       } else {
-        const startAddress = addressing.memoryAddress(startIndex)
-        const startString = addressing.asAssemblyString(startAddress).padStart(OCCUPIED_COLUMNS.Start, ' ')
+        const startAddress = memory.memoryAddress(startIndex)
+        const startString = memory.asAssemblyString(startAddress).padStart(OCCUPIED_COLUMNS.Start, ' ')
 
         return startString.padStart(OCCUPIED_COLUMNS.Start)
           + ' TO '
@@ -438,6 +483,7 @@ function occupiedEntryString (print: PrintContext, data: [number, OccupiedContex
 
 export function printOccupied (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
+  const memory = context.memory
   const occupiedContext: OccupiedContext = {
     cells,
     startIndex: 0,
@@ -448,7 +494,7 @@ export function printOccupied (pass2: Pass2Output, context: PrintContext): void 
   printTable(context, OCCUPIED_TABLE_DATA, entries())
 
   function * entries (): Generator<[number, OccupiedContext]> {
-    const start = addressing.memoryOffset(addressing.FIXED_MEMORY_OFFSET)
+    const start = memory.fixedMemoryOffset()
     for (let i = start; i < cells.length; i++) {
       yield [i, occupiedContext]
     }

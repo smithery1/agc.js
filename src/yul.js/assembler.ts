@@ -2,6 +2,7 @@ import { compat } from '../common/compat'
 import { EolSection, isStderrSection, isYul, Options } from './bootstrap'
 import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
+import { createMemory, Memory } from './memory'
 import { createOperations, Operations } from './operations'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
@@ -74,15 +75,16 @@ export default class Assembler {
   async assemble (options: Options): Promise<boolean> {
     try {
       const operations = createOperations(options)
-      const pass1 = new Pass1Assembler(operations, options)
-      const pass2 = new Pass2Assembler(operations, options)
+      const memory = createMemory(options)
+      const pass1 = new Pass1Assembler(operations, memory, options)
+      const pass2 = new Pass2Assembler(operations, memory, options)
       const pass1Result = await pass1.assemble(options.file)
       if (isCussInstance(pass1Result)) {
         printCuss(pass1Result)
         return false
       }
       const pass2Result = pass2.assemble(pass1Result)
-      this.printOutput(operations, options, pass2Result)
+      this.printOutput(operations, memory, options, pass2Result)
       return pass2Result.fatalCussCount === 0
     } catch (error) {
       compat.log(error.stack)
@@ -90,7 +92,7 @@ export default class Assembler {
     }
   }
 
-  private printOutput (operations: Operations, options: Options, pass2: Pass2Output): void {
+  private printOutput (operations: Operations, memory: Memory, options: Options, pass2: Pass2Output): void {
     const program = getProgram(options.file)
     const user = compat.username()
     const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
@@ -98,8 +100,10 @@ export default class Assembler {
     const context: PrintContext = {
       options,
       operations,
+      memory,
       printer,
-      charset
+      charset,
+      cache: new Map()
     }
 
     if (options.formatted && options.eol.length > 1) {

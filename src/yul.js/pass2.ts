@@ -1,10 +1,10 @@
 import * as field from './address-field'
-import * as addressing from './addressing'
 import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses } from './assembly'
 import { isBlk2, isYulNonBlk2, Options, YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType, SourceLine } from './lexer'
+import { Bank, Memory, MemoryType } from './memory'
 import * as ops from './operations'
 import { BasicAddressRange } from './operations'
 import * as parse from './parser'
@@ -91,7 +91,8 @@ export class Pass2Assembler {
   private oneShotSBank: number | undefined
   private count: AssembledCard | undefined
 
-  constructor (private readonly operations: ops.Operations, private readonly options: Options) {
+  constructor (
+    private readonly operations: ops.Operations, private readonly memory: Memory, private readonly options: Options) {
   }
 
   /**
@@ -178,10 +179,10 @@ export class Pass2Assembler {
 
   private validateReachableAddress (
     trueAddress: number, reachable: boolean, assembled: AssembledCard):
-    { bank?: addressing.Bank, address: number } | undefined {
-    const bankAndAddress = addressing.asSwitchedBankAndAddress(trueAddress)
+    { bank?: Bank, address: number } | undefined {
+    const bankAndAddress = this.memory.asSwitchedBankAndAddress(trueAddress)
     if (bankAndAddress === undefined) {
-      getCusses(assembled).add(cusses.Cuss34, addressing.asAssemblyString(trueAddress))
+      getCusses(assembled).add(cusses.Cuss34, this.memory.asAssemblyString(trueAddress))
       return undefined
     }
 
@@ -194,18 +195,18 @@ export class Pass2Assembler {
     if (bankAndAddress.bank.eBank !== undefined) {
       if (check(bankAndAddress.bank.eBank !== this.eBank)) {
         getCusses(assembled).add(
-          cusses.Cuss3A, 'Address=' + addressing.asAssemblyString(trueAddress), 'EBANK=' + this.eBank.toString())
+          cusses.Cuss3A, 'Address=' + this.memory.asAssemblyString(trueAddress), 'EBANK=' + this.eBank.toString())
       }
     } else {
-      const locationAddress = addressing.asSwitchedBankAndAddress(this.locationCounter)
+      const locationAddress = this.memory.asSwitchedBankAndAddress(this.locationCounter)
       if (locationAddress?.bank !== undefined
         && check(locationAddress.bank.fBank !== bankAndAddress.bank.fBank
           || locationAddress.bank.sBank !== bankAndAddress.bank.sBank)) {
         getCusses(assembled).add(
           cusses.Cuss3A,
           'Bank mismatch',
-          'Address=' + addressing.asAssemblyString(trueAddress),
-          'Location=' + addressing.asAssemblyString(this.locationCounter))
+          'Address=' + this.memory.asAssemblyString(trueAddress),
+          'Location=' + this.memory.asAssemblyString(this.locationCounter))
       }
     }
 
@@ -267,9 +268,9 @@ export class Pass2Assembler {
     // If previous instruction was INDEX, operand will be modified, presumably appropriately.
     // Skip checking and just return the banked address.
     if (this.indexMode) {
-      const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+      const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
       if (bankAndAddress === undefined) {
-        getCusses(assembled).add(cusses.Cuss34, addressing.asAssemblyString(address))
+        getCusses(assembled).add(cusses.Cuss34, this.memory.asAssemblyString(address))
         return undefined
       }
 
@@ -282,14 +283,14 @@ export class Pass2Assembler {
     }
 
     if (operation.addressRange === BasicAddressRange.FixedMemory) {
-      const addressType = addressing.memoryArea(address)
-      if (!addressing.isFixed(addressType)) {
-        getCusses(assembled).add(cusses.Cuss3A, 'Expected fixed but got ' + addressing.asAssemblyString(address))
+      const addressType = this.memory.memoryType(address)
+      if (!this.memory.isFixed(addressType)) {
+        getCusses(assembled).add(cusses.Cuss3A, 'Expected fixed but got ' + this.memory.asAssemblyString(address))
       }
     } else if (operation.addressRange === BasicAddressRange.ErasableMemory) {
-      const addressType = addressing.memoryArea(address)
-      if (!addressing.isErasable(addressType)) {
-        getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
+      const addressType = this.memory.memoryType(address)
+      if (!this.memory.isErasable(addressType)) {
+        getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + this.memory.asAssemblyString(address))
       }
     }
 
@@ -355,15 +356,15 @@ export class Pass2Assembler {
     }
 
     const address = resolved.address
-    if (!addressing.isErasable(addressing.memoryArea(address))) {
-      getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + addressing.asAssemblyString(address))
+    if (!this.memory.isErasable(this.memory.memoryType(address))) {
+      getCusses(assembled).add(cusses.Cuss3A, 'Expected erasable but got ' + this.memory.asAssemblyString(address))
     }
 
     let raw: number
     // Ref BTM p2-10. BLK2 uses a 4 bit op-code and a 10 bit address.
     if (isBlk2(this.options.yulVersion)) {
       const ts = (lhs.operation.code ?? 0) << 10
-      const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+      const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
       raw = ts | (bankAndAddress?.address ?? ERROR_WORD)
     } else {
       const ts = (lhs.operation.code ?? 0) << 11
@@ -391,7 +392,7 @@ export class Pass2Assembler {
   }
 
   private onGenAdr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
-    const bankAndAddress = addressing.asSwitchedBankAndAddress(resolved.address)
+    const bankAndAddress = this.memory.asSwitchedBankAndAddress(resolved.address)
     if (bankAndAddress === undefined) {
       getCusses(assembled).add(cusses.Cuss34)
       return
@@ -419,9 +420,9 @@ export class Pass2Assembler {
   }
 
   private onCadr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
-    const fixed = addressing.asFixedCompleteAddress(resolved.address)
+    const fixed = this.memory.asFixedCompleteAddress(resolved.address)
     if (fixed === undefined) {
-      getCusses(assembled).add(cusses.Cuss37, 'Not in fixed memory', 'Address=' + addressing.asAssemblyString(fixed))
+      getCusses(assembled).add(cusses.Cuss37, 'Not in fixed memory', 'Address=' + this.memory.asAssemblyString(fixed))
       return
     }
 
@@ -429,9 +430,9 @@ export class Pass2Assembler {
   }
 
   private onECadr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
-    if (!addressing.isErasable(addressing.memoryArea(resolved.address))) {
+    if (!this.memory.isErasable(this.memory.memoryType(resolved.address))) {
       getCusses(assembled).add(
-        cusses.Cuss37, 'Not in erasable memory', 'Address=' + addressing.asAssemblyString(resolved.address))
+        cusses.Cuss37, 'Not in erasable memory', 'Address=' + this.memory.asAssemblyString(resolved.address))
       return
     }
 
@@ -444,8 +445,8 @@ export class Pass2Assembler {
       return
     }
     const address = resolved.address
-    const bankAndAddress = addressing.asBankAndAddress(address)
-    const switched = addressing.asSwitchedBankAndAddress(address)
+    const bankAndAddress = this.memory.asBankAndAddress(address)
+    const switched = this.memory.asSwitchedBankAndAddress(address)
     if (bankAndAddress === undefined || switched === undefined) {
       getCusses(assembled).add(cusses.Cuss34)
       return
@@ -484,10 +485,10 @@ export class Pass2Assembler {
       return
     }
     const address = resolved.address
-    const high = addressing.asFixedCompleteAddress(address)
-    const switched = addressing.asSwitchedBankAndAddress(address)
+    const high = this.memory.asFixedCompleteAddress(address)
+    const switched = this.memory.asSwitchedBankAndAddress(address)
     if (high === undefined || switched === undefined) {
-      getCusses(assembled).add(cusses.Cuss3F, 'Not in fixed memory', 'Address=' + addressing.asAssemblyString(address))
+      getCusses(assembled).add(cusses.Cuss3F, 'Not in fixed memory', 'Address=' + this.memory.asAssemblyString(address))
       return
     }
 
@@ -514,9 +515,9 @@ export class Pass2Assembler {
     // However, Comanche055 has a couple of BBCON operations with fixed-fixed locations, and 2CADR, which is supposed to
     // behave like BBCON, also references fixed-fixed locations at various points in the code.
     // So allow fixed-fixed locations.
-    let bank = addressing.fixedBankNumberToBank(address)
+    let bank = this.memory.fixedBankNumberToBank(address)
     if (bank === undefined) {
-      const bankAndAddress = addressing.asBankAndAddress(address)
+      const bankAndAddress = this.memory.asBankAndAddress(address)
       const sBank = this.oneShotSBank === undefined ? bankAndAddress?.bank.sBank : this.oneShotSBank
       bank = { fBank: bankAndAddress?.bank.fBank ?? 0, sBank }
     }
@@ -554,7 +555,7 @@ export class Pass2Assembler {
   private onLogicalP (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
     const flag = resolved.address
     if (flag < 0) {
-      getCusses(assembled).add(cusses.Cuss3F, 'Value must be non-negative', addressing.asAssemblyString(flag))
+      getCusses(assembled).add(cusses.Cuss3F, 'Value must be non-negative', this.memory.asAssemblyString(flag))
       return
     }
     if (resolved.offset !== 0) {
@@ -600,7 +601,7 @@ export class Pass2Assembler {
     const interpretive = card.interpretive
     let word: number
     let complement = false
-    const isErasable = addressing.isErasable(addressing.memoryArea(address))
+    const isErasable = this.memory.isErasable(this.memory.memoryType(address))
 
     if (interpretive?.operand.type === ops.InterpretiveOperandType.Address) {
       if (isErasable) {
@@ -617,7 +618,7 @@ export class Pass2Assembler {
     } else {
       // Ref SYM, VB-4
       if (isBlk2(this.options.yulVersion) && isErasable) {
-        const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+        const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
         word = bankAndAddress?.address ?? ERROR_WORD
       } else {
         word = address > 0x1000 ? (address - 0x1000) : address
@@ -639,13 +640,13 @@ export class Pass2Assembler {
       return ERROR_WORD
     }
 
-    // Must be in current EBANK and >= 61(8) and <= 1377(8) Ref BTM, 2-18.
+    // Must be in current EBANK and >= 061 and <= 01377 Ref BTM, 2-18.
     // Also allegedly off-limits are addresses < 077 and EBANKs other than the current one.
     // However, there are plenty of stores in low memory and references to other banks without
     // an EBANK= update.
 
     if (isBlk2(this.options.yulVersion)) {
-      const bankAndAddress = addressing.asSwitchedBankAndAddress(trueAddress)
+      const bankAndAddress = this.memory.asSwitchedBankAndAddress(trueAddress)
       return bankAndAddress?.address ?? ERROR_WORD
     }
     return trueAddress
@@ -656,20 +657,20 @@ export class Pass2Assembler {
     if (!operand.fixedMemory) {
       getCusses(assembled).add(cusses.Cuss37, 'Fixed not allowed')
     } else if (operand.indexable) {
-      const fixedAddress = addressing.asInterpretiveFixedAddress(this.locationCounter, trueAddress)
+      const fixedAddress = this.memory.asInterpretiveFixedAddress(this.locationCounter, trueAddress)
       if (fixedAddress === undefined) {
         getCusses(assembled).add(
           cusses.Cuss3A,
           'Not in location half-memory',
-          addressing.asAssemblyString(trueAddress),
-          addressing.asAssemblyString(this.locationCounter))
+          this.memory.asAssemblyString(trueAddress),
+          this.memory.asAssemblyString(this.locationCounter))
       } else {
         return fixedAddress
       }
     } else {
-      const fixedAddress = addressing.asFixedCompleteAddress(trueAddress)
+      const fixedAddress = this.memory.asFixedCompleteAddress(trueAddress)
       if (fixedAddress === undefined) {
-        getCusses(assembled).add(cusses.Cuss37, 'Not in fixed bank', addressing.asAssemblyString(trueAddress))
+        getCusses(assembled).add(cusses.Cuss37, 'Not in fixed bank', this.memory.asAssemblyString(trueAddress))
       } else {
         return fixedAddress
       }
@@ -685,7 +686,7 @@ export class Pass2Assembler {
     }
     const channel = resolved.address
     // Ref SYM, VC-3 says "bits 5-1 give the channel number", but Luminary 210 at least overflows this with a reference
-    // to channel 76(8).
+    // to channel 076.
     // Accept 16 bits until we look into it more.
     if (channel >= 0x100) {
       getCusses(assembled).add(cusses.Cuss1E, 'Max channel is 377')
@@ -702,14 +703,14 @@ export class Pass2Assembler {
       return
     }
     const address = resolved.address
-    const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+    const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
     if (bankAndAddress === undefined) {
       getCusses(assembled).add(cusses.Cuss34)
       return
     }
-    if (addressing.memoryArea(address) !== addressing.MemoryArea.Variable_Fixed) {
+    if (this.memory.memoryType(address) !== MemoryType.Variable_Fixed) {
       getCusses(assembled).add(
-        cusses.Cuss37, 'Not in variable-fixed memory', 'Address=' + addressing.asAssemblyString(address))
+        cusses.Cuss37, 'Not in variable-fixed memory', 'Address=' + this.memory.asAssemblyString(address))
       return
     }
 
@@ -724,8 +725,8 @@ export class Pass2Assembler {
       return
     }
     const address = resolved.address
-    if (!addressing.isErasable(addressing.memoryArea(address))) {
-      getCusses(assembled).add(cusses.Cuss37, 'Not in erasable memory', 'Address=' + addressing.asAssemblyString(address))
+    if (!this.memory.isErasable(this.memory.memoryType(address))) {
+      getCusses(assembled).add(cusses.Cuss37, 'Not in erasable memory', 'Address=' + this.memory.asAssemblyString(address))
       return
     }
 
@@ -789,7 +790,7 @@ export class Pass2Assembler {
     }
 
     const bank = card.address.value
-    const range = addressing.fixedBankRange(card.address.value)
+    const range = this.memory.fixedBankRange(card.address.value)
     if (range === undefined) {
       getCusses(assembled).add(cusses.Cuss4E)
       return
@@ -814,7 +815,7 @@ export class Pass2Assembler {
     ++address
     const remaining = range.max - address
     assembled.assemblerContext = remaining.toString() + ' WORDS LEFT'
-    const bankAndAddress = addressing.asSwitchedBankAndAddress(address)
+    const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
     if (bankAndAddress === undefined) {
       getCusses(assembled).add(cusses.Cuss3F, 'Unexpected address out of range')
       return
@@ -870,8 +871,8 @@ export class Pass2Assembler {
       eBank: 0,
       sBank: 0
     }
-    for (let bank = 0; bank < addressing.NUM_FIXED_BANKS; bank++) {
-      const range = addressing.fixedBankRange(bank)
+    for (let bank = 0; bank < this.memory.numFixedBanks(); bank++) {
+      const range = this.memory.fixedBankRange(bank)
       if (range !== undefined) {
         const address = this.output.cells.findLastUsed(range)
         if (address !== undefined && address < range.max) {
@@ -934,10 +935,10 @@ export class Pass2Assembler {
     const address = resolved.address
     let bank: number
 
-    if (addressing.isErasableBank(address)) {
+    if (this.memory.isErasableBank(address)) {
       bank = address
     } else {
-      const bankAndAddress = addressing.asBankAndAddress(address)
+      const bankAndAddress = this.memory.asBankAndAddress(address)
       if (bankAndAddress?.bank.eBank === undefined) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
@@ -962,10 +963,10 @@ export class Pass2Assembler {
     const address = resolved.address
     let bank: number
 
-    if (addressing.isFixedBank(address)) {
+    if (this.memory.isFixedBank(address)) {
       bank = address
     } else {
-      const bankAndAddress = addressing.asBankAndAddress(address)
+      const bankAndAddress = this.memory.asBankAndAddress(address)
       if (bankAndAddress?.bank.sBank === undefined) {
         getCusses(assembled).add(cusses.Cuss3F)
         return
@@ -998,17 +999,17 @@ export class Pass2Assembler {
       getCusses(assembled).add(
         cusses.Cuss35,
         'Check mismatch',
-        'location = ' + addressing.asAssemblyString(location),
-        'address = ' + addressing.asAssemblyString(address))
+        'location = ' + this.memory.asAssemblyString(location),
+        'address = ' + this.memory.asAssemblyString(address))
     }
   }
 
   private onEqualsEcadr (card: parse.ClericalCard, assembled: AssembledCard): void {
     const resolved = this.resolve(card.address, assembled)
     if (resolved !== undefined) {
-      if (!addressing.isErasable(addressing.memoryArea(resolved.address))) {
+      if (!this.memory.isErasable(this.memory.memoryType(resolved.address))) {
         getCusses(assembled).add(
-          cusses.Cuss37, 'Not in erasable memory', 'Address=' + addressing.asAssemblyString(resolved.address))
+          cusses.Cuss37, 'Not in erasable memory', 'Address=' + this.memory.asAssemblyString(resolved.address))
       } else {
         assembled.refAddress = resolved.address + resolved.offset
       }

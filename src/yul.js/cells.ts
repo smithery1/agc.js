@@ -1,6 +1,6 @@
-import * as addressing from './addressing'
 import { AssembledCard, getCusses } from './assembly'
 import * as cusses from './cusses'
+import { Memory } from './memory'
 import { sourceString } from './util'
 
 /**
@@ -21,8 +21,8 @@ export interface Cell {
 export class Cells {
   private readonly cells: Cell[]
 
-  constructor () {
-    this.cells = new Array<Cell>(addressing.MEMORY_SIZE)
+  constructor (private readonly memory: Memory) {
+    this.cells = new Array<Cell>(memory.cellCount())
   }
 
   /**
@@ -32,7 +32,7 @@ export class Cells {
    * @returns true iff the specified address is assigned a card and/or value
    */
   isAssigned (address: number): boolean {
-    return this.cells[addressing.memoryOffset(address)] !== undefined
+    return this.cells[this.memory.memoryOffset(address)] !== undefined
   }
 
   /**
@@ -49,7 +49,7 @@ export class Cells {
       return
     }
 
-    const location = addressing.memoryOffset(address)
+    const location = this.memory.memoryOffset(address)
     const existing = this.cells[location]
 
     if (existing?.definition !== undefined) {
@@ -82,12 +82,12 @@ export class Cells {
 
     if (value < 0 || value > 0x7FFF) {
       getCusses(definition).add(
-        cusses.Cuss5C, 'Value out of range', addressing.asAssemblyString(address), value.toString(8))
+        cusses.Cuss5C, 'Value out of range', this.memory.asAssemblyString(address), value.toString(8))
     }
-    const location = addressing.memoryOffset(address)
+    const location = this.memory.memoryOffset(address)
     const existing = this.cells[location]
     if (existing?.definition === undefined) {
-      getCusses(definition).add(cusses.Cuss5C, 'Address not assigned in pass 1', addressing.asAssemblyString(address))
+      getCusses(definition).add(cusses.Cuss5C, 'Address not assigned in pass 1', this.memory.asAssemblyString(address))
       this.cells[location] = { definition: definition, value }
     } else {
       if (existing.value !== undefined) {
@@ -113,9 +113,9 @@ export class Cells {
 
     if (value < 0 || value > 0x7FFF) {
       getCusses(definition).add(
-        cusses.Cuss5C, 'Value out of range', addressing.asAssemblyString(address), value.toString(8))
+        cusses.Cuss5C, 'Value out of range', this.memory.asAssemblyString(address), value.toString(8))
     }
-    const location = addressing.memoryOffset(address)
+    const location = this.memory.memoryOffset(address)
     const existing = this.cells[location]
     if (existing !== undefined) {
       this.cussConflict(existing.definition, definition)
@@ -130,7 +130,7 @@ export class Cells {
    * @returns the value
    */
   value (address: number): number | undefined {
-    return this.cells[addressing.memoryOffset(address)]?.value
+    return this.cells[this.memory.memoryOffset(address)]?.value
   }
 
   /**
@@ -141,7 +141,7 @@ export class Cells {
    */
   findFirstFree (bank: { min: number, max: number }): number | undefined {
     for (let i = bank.min; i <= bank.max; i++) {
-      if (this.cells[addressing.memoryOffset(i)] === undefined) {
+      if (this.cells[this.memory.memoryOffset(i)] === undefined) {
         return i
       }
     }
@@ -157,7 +157,7 @@ export class Cells {
    */
   findLastUsed (bank: { min: number, max: number }): number | undefined {
     for (let i = bank.max; i >= bank.min; i--) {
-      if (this.cells[addressing.memoryOffset(i)] !== undefined) {
+      if (this.cells[this.memory.memoryOffset(i)] !== undefined) {
         return i
       }
     }
