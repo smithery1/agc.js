@@ -1,5 +1,5 @@
 import { compat } from '../common/compat'
-import { EolSection, isStderrSection, isYul, Options } from './bootstrap'
+import { EolSection, isStderrSection, Options } from './bootstrap'
 import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
 import { createMemory, Memory } from './memory'
@@ -96,7 +96,7 @@ export default class Assembler {
     const program = getProgram(options.file)
     const user = compat.username()
     const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
-    const charset = getCharset(isYul(options.yulVersion) ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
+    const charset = getCharset(options.version.isYul() ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
     const context: PrintContext = {
       options,
       operations,

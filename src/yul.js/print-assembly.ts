@@ -1,7 +1,6 @@
 import { compat } from '../common/compat'
 import { AddressField } from './address-field'
 import { AssembledCard } from './assembly'
-import { YulVersion } from './bootstrap'
 import { Cells } from './cells'
 import { LexedLine, LineType } from './lexer'
 import { Memory } from './memory'
@@ -11,6 +10,7 @@ import { Pass2Output } from './pass2'
 import { LINE_LENGTH, PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
 import { parity } from './util'
+import * as versions from './versions'
 
 const COLUMNS = {
   LineNumber: 4,
@@ -426,7 +426,7 @@ export function printResults (pass2: Pass2Output, context: PrintContext): void {
   let result: string
   let manufacturable = ''
 
-  if (context.options.yulVersion > YulVersion.B1965) {
+  if (context.options.version.isLaterThan(versions.Enum.B1965)) {
     context.printer.endPage()
   } else if (context.options.formatted) {
     context.printer.printTrailingSeparator()

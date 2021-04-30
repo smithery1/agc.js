@@ -1,6 +1,6 @@
 import { AssembledCard } from './assembly'
 
-const whitespace = /^\s+$/
+const WHITESPACE_EXPR = /^\s+$/
 /**
  * Returns true iff the specified string consists entirely of whitespace.
  *
@@ -8,7 +8,18 @@ const whitespace = /^\s+$/
  * @returns true iff the specified string consists entirely of whitespace
  */
 export function isWhitespace (str: string): boolean {
-  return whitespace.test(str)
+  return WHITESPACE_EXPR.test(str)
+}
+
+const OCTAL_EXPR = /^[0-7]+$/
+/**
+ * Returns true iff the specified string consists entirely of octal digits.
+ *
+ * @param str the string to test
+ * @returns true iff the specified string consists entirely of octal digits
+ */
+export function isWholeOctal (str: string): boolean {
+  return OCTAL_EXPR.test(str)
 }
 
 /**

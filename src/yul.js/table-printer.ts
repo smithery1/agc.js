@@ -1,4 +1,3 @@
-import { YulVersion } from './bootstrap'
 import { PrintContext } from './printer-utils'
 
 export interface TableData<Entry> {
@@ -51,7 +50,7 @@ export function printTable<Entry> (
         options.formatted
         // See Aurora12 p648/649 for an example of YUL not printing a separator as the first entry in a page.
         // See Luminary099 p1563 for an example of GAP doing printing one.
-        && (options.yulVersion >= YulVersion.GAP || currentCol > 0 || currentRow > 0)
+        && (!options.version.isYul() || currentCol > 0 || currentRow > 0)
         && lastEntry !== undefined
         && tableData.separator(context, entry, lastEntry)) {
         output[currentRow][currentCol] = separator
@@ -70,9 +69,14 @@ export function printTable<Entry> (
       printPage(lastPageRows)
     }
   } else {
-    while (currentRow > 0 || currentCol > 0) {
-      output[currentRow][currentCol] = ''
-      incRow()
+    if (currentRow > 0 || currentCol > 0) {
+      const maxRow = currentCol === 0 ? currentRow : rowsPerPage
+      while (++currentCol < columns) {
+        for (let i = 0; i < maxRow; i++) {
+          output[i][currentCol] = ''
+        }
+      }
+      printPage(currentRow)
     }
   }
 

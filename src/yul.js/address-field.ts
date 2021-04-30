@@ -1,4 +1,5 @@
 import { AssembledCard, getCusses } from './assembly'
+import { Options } from './bootstrap'
 import * as cusses from './cusses'
 import * as ops from './operations'
 import { SymbolTable } from './symbol-table'
@@ -54,7 +55,7 @@ const MAX_15_BITS = 0x7FFF
  * @returns the parsed field or a cuss
  */
 export function parse (
-  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean, parseCusses: cusses.Cusses):
+  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean, options: Options, parseCusses: cusses.Cusses):
   AddressField | undefined {
   const match = interpretiveIndex !== ops.Necessity.Never
     ? INDEXED_FIELD_EXPR.exec(field)
@@ -151,7 +152,10 @@ export function parse (
       } else {
         // Ref YUL, 13-114. "If a numeric subfield contains character 8 or 9 but no D, it is considered to represent a
         // decimal integer, but a complaint is printed."
-        parseCusses.add(cusses.Cuss21)
+        // No YUL or GAP scans have such a problem so far, but SuperJob has a few of these in its scans.
+        if (!options.version.isRaytheon()) {
+          parseCusses.add(cusses.Cuss21)
+        }
         value = Number.parseInt(input.substring(0, input.length), 10)
       }
     } else {

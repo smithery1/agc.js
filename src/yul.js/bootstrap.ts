@@ -1,28 +1,5 @@
 import Assembler from './assembler'
-
-export enum YulVersion {
-  B1965,
-  B1966,
-  Y1966,
-  Y1967,
-  GAP
-}
-
-export function isBlk2 (version: YulVersion): boolean {
-  return version <= YulVersion.B1966
-}
-
-export function isYul (version: YulVersion): boolean {
-  return version <= YulVersion.Y1967
-}
-
-export function isYulNonBlk2 (version: YulVersion): boolean {
-  return isYul(version) && !isBlk2(version)
-}
-
-export function isGap (version: YulVersion): boolean {
-  return version === YulVersion.GAP
-}
+import { Version } from './versions'
 
 export enum EolSection {
   Listing,
@@ -44,7 +21,7 @@ export enum EolSection {
 
 export interface Options {
   file: string
-  yulVersion: YulVersion
+  version: Version
   eol: EolSection[]
   formatted: boolean
 }

@@ -1,4 +1,4 @@
-import { isBlk2, isGap, Options } from './bootstrap'
+import { Options } from './bootstrap'
 
 /**
  * Information about an address range; min and max are inclusive true addresses.
@@ -116,10 +116,10 @@ export function createMemory (options: Options): Memory {
   let banks: number
   let nonexistentHighMem: Range | undefined
 
-  if (isGap(options.yulVersion)) {
+  if (options.version.isGap()) {
     banks = 43
     nonexistentHighMem = { min: 0xF000, max: 0xFFFF }
-  } else if (isBlk2(options.yulVersion)) {
+  } else if (options.version.isBlk2()) {
     banks = 23
   } else {
     banks = 35
@@ -308,7 +308,8 @@ export class Memory {
     } else if (bank < 32) {
       return { fBank: bank, sBank: 3 }
     } else {
-      return { fBank: bank, sBank: 4 }
+      const sBank = Math.floor(bank / 8)
+      return { fBank: bank, sBank }
     }
   }
 

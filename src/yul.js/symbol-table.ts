@@ -279,6 +279,16 @@ export class Pass2SymbolTable implements SymbolTable {
   }
 
   /**
+   * Returns the symbol entry for the specified symbol or undefined if the symbol is not in this table.
+   *
+   * @param symbol the symbol to look up
+   * @returns the symbol entry for the specified symbol or undefined if the symbol is not in this table
+   */
+  entry (symbol: string): SymbolEntry | undefined {
+    return this.table.get(symbol)
+  }
+
+  /**
    * Provides access to the raw cell data for printing purposes.
    * See print-symbol-table.ts.
    */

@@ -3,9 +3,10 @@ import * as field from './address-field'
 import { Options } from './bootstrap'
 import * as cusses from './cusses'
 import { lex, LexedLine, LineType } from './lexer'
+import { Memory, MemoryType } from './memory'
 import { lexNumeric } from './numeric-card'
 import * as ops from './operations'
-import { isWhitespace } from './util'
+import { isWhitespace, isWholeOctal } from './util'
 
 /**
  * A parsed location field.
@@ -243,7 +244,8 @@ export class Parser {
   private isStadr: boolean
   private cardCusses: cusses.Cusses
 
-  constructor (private readonly operations: ops.Operations, private readonly options: Options) {
+  constructor (
+    private readonly operations: ops.Operations, private readonly memory: Memory, private readonly options: Options) {
     this.interpretiveOperands = []
     this.page = 0
     this.isExtended = false
@@ -391,14 +393,14 @@ export class Parser {
       if (input.parsedOp.op === this.operations.P) {
         if (pushDown === undefined) {
           this.cardCusses.add(cusses.Cuss0E)
-          parsed = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
+          parsed = field.parse(operand, ops.Necessity.Never, false, this.options, this.cardCusses)
         } else {
           const indexed = pushDown.operator.indexed && pushDown.operand.indexable
           const indexedNecessity = indexed ? ops.Necessity.Required : ops.Necessity.Never
-          parsed = field.parse(operand, indexedNecessity, false, this.cardCusses)
+          parsed = field.parse(operand, indexedNecessity, false, this.options, this.cardCusses)
         }
       } else {
-        parsed = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
+        parsed = field.parse(operand, ops.Necessity.Never, false, this.options, this.cardCusses)
       }
 
       if (parsed === undefined) {
@@ -460,9 +462,11 @@ export class Parser {
     if (addressField !== undefined) {
       if (input.parsedOp.op === this.operations.SUBRO) {
         parsed = { value: addressField }
+      } else if (input.parsedOp.op === this.operations.SETLOC && this.options.version.isRaytheon()) {
+        parsed = this.parseSuperSetloc(addressField)
       } else {
         const rangeAllowed = input.parsedOp.op === this.operations.ERASE || input.parsedOp.op === this.operations.MEMORY
-        parsed = field.parse(addressField, ops.Necessity.Never, rangeAllowed, this.cardCusses)
+        parsed = field.parse(addressField, ops.Necessity.Never, rangeAllowed, this.options, this.cardCusses)
       }
       if (parsed === undefined) {
         return { lexedLine: input.lexedLine }
@@ -479,6 +483,56 @@ export class Parser {
       interpretive: pushDown
     }
     return { lexedLine: input.lexedLine, card }
+  }
+
+  private parseSuperSetloc (addressField: string): field.AddressField | undefined {
+    // Field format is TTBBLLLL where:
+    // TT: Either FF for fixed fixed memory or CF for variable fixed memory
+    // BB: Fixed bank number
+    // LLLL: Address, true address for FF and S-register for CF
+
+    if (addressField.length !== 8) {
+      this.cardCusses.add(cusses.Cuss3D)
+      return undefined
+    }
+    const tt = addressField.slice(0, 2)
+    const bb = addressField.slice(2, 4)
+    const llll = addressField.slice(4)
+
+    if (!isWholeOctal(bb) || !isWholeOctal(llll)) {
+      this.cardCusses.add(cusses.Cuss3D)
+      return undefined
+    }
+
+    const bank = Number.parseInt(bb, 8)
+    const location = Number.parseInt(llll, 8)
+
+    if (tt === 'FF') {
+      if (bank !== 2 && bank !== 3) {
+        this.cardCusses.add(cusses.Cuss3D, 'Fixed-fixed bank must be 2 or 3')
+        return undefined
+      }
+      if (this.memory.memoryType(location) !== MemoryType.Fixed_Fixed) {
+        this.cardCusses.add(cusses.Cuss3D, 'Location is not in fixed-fixed memory')
+        return undefined
+      }
+      return { value: location }
+    } else if (tt === 'CF') {
+      const range = this.memory.fixedBankRange(bank)
+      if (range === undefined) {
+        this.cardCusses.add(cusses.Cuss3D, 'Fixed bank value out of range')
+        return undefined
+      }
+      if (location < 0x400 || location > 0x7FF) {
+        this.cardCusses.add(cusses.Cuss3D, 'Location value out of range')
+        return undefined
+      }
+      const value = range.min + location - 0x400
+      return { value }
+    }
+
+    this.cardCusses.add(cusses.Cuss3D, 'Location must start with FF or FC')
+    return undefined
   }
 
   private parseNumericConstantCard (input: LineOp<ops.NumericConstant>): ParsedLine {
@@ -534,7 +588,7 @@ export class Parser {
     let address: field.AddressField | undefined
     const operand = input.lexedLine.field3
     if (operand !== undefined) {
-      address = field.parse(operand, ops.Necessity.Never, false, this.cardCusses)
+      address = field.parse(operand, ops.Necessity.Never, false, this.options, this.cardCusses)
     }
 
     this.isExtended = input.parsedOp.op === this.operations.EXTEND
@@ -618,7 +672,7 @@ export class Parser {
 
     // STORE and BLK2 STODL and STOVL can take an indexed first word but don't use '*', so allow indexing for them.
     const indexNecessity = this.operations.storeFirstWordIndexable(input.parsedOp.op)
-    const fieldParsed = field.parse(operand, indexNecessity, false, this.cardCusses)
+    const fieldParsed = field.parse(operand, indexNecessity, false, this.options, this.cardCusses)
     if (fieldParsed === undefined) {
       return { lexedLine: input.lexedLine }
     }

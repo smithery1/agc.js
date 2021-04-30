@@ -1,6 +1,7 @@
 import { argv } from 'process'
 import '../../common/node/compat-node'
 import * as boot from '../bootstrap'
+import * as versions from '../versions'
 
 const options = parseOptions(argv)
 if (options !== undefined) {
@@ -11,7 +12,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
   const app = argv.slice(0, 2).join(' ')
   const options: boot.Options = {
     file: '',
-    yulVersion: boot.YulVersion.GAP,
+    version: versions.createVersion(versions.Enum.GAP),
     eol: [],
     formatted: true
   }
@@ -97,7 +98,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
 
     function addSection (val: string, isStderr: boolean): boolean {
       if (val === 'All') {
-        if (boot.isGap(options.yulVersion)) {
+        if (options.version.isGap() || options.version.isRaytheon()) {
           add(boot.EolSection.ListingWithCusses)
           add(boot.EolSection.Symbols)
           add(boot.EolSection.UndefinedSymbols)
@@ -110,7 +111,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
           add(boot.EolSection.OctalListing)
           add(boot.EolSection.Occupied)
           add(boot.EolSection.Results)
-        } else if (boot.isYulNonBlk2(options.yulVersion)) {
+        } else if (options.version.isYulNonBlk2()) {
           add(boot.EolSection.ListingWithCusses)
           add(boot.EolSection.Symbols)
           add(boot.EolSection.TableSummary)
@@ -146,7 +147,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
 
     function removeSection (val: string): boolean {
       if (val === 'All') {
-        if (boot.isYul(options.yulVersion)) {
+        if (options.version.isYul()) {
           remove(boot.EolSection.ListingWithCusses)
           remove(boot.EolSection.Symbols)
           remove(boot.EolSection.UndefinedSymbols)
@@ -196,12 +197,13 @@ function parseOptions (argv: string[]): boot.Options | undefined {
       return false
     }
 
-    const version = boot.YulVersion[argv[i++]]
+    const str = argv[i++]
+    const version = versions.parseVersion(str)
     if (version === undefined) {
-      console.error('Invalid yul argument')
+      console.error('Invalid version argument')
       return false
     }
-    options.yulVersion = version
+    options.version = version
     return true
   }
 }
@@ -230,21 +232,25 @@ function usage (app: string): void {
   [-y|--yul <version>]
     Assembles and outputs using YUL rules for the specific YUL version.
     Versions are:
+      RAY Raytheon assembler, suitable for SuperJob
+        No checksums, EBANK, or SBANK; special SETLOC form
+        Numeric subfields treated as current-bank addresses
+        GAP EOL output
       B1965 Early BLK2, suitable for Retread
-          No checksums
-          EOL output differences vs B1966
+        No checksums
+        EOL output differences vs B1966
       B1966 Late BLK2, suitable for Agora12
-          Checksums without BNKSUM
-          EBANK= doesn't reset on new log, one shot not required
-          Early version of some interpretive instruction words
-          EOL output differences vs Y1966
+        Checksums without BNKSUM
+        EBANK= doesn't reset on new log, one shot not required
+        Early version of some interpretive instruction words
+        EOL output differences vs Y1966
       Y1966 Early YUL, suitable for Sunburst37
-          Positive bank number based checksums
-          EOL output differences vs GAP
+        Positive bank number based checksums
+        EOL output differences vs GAP
       Y1967 Late YUL, suitable for Sunburst120
-          BANK with an operand updates SBANK
-          EOL output differences vs GAP
+        BANK with an operand updates SBANK
+        EOL output differences vs GAP
       GAP Suitable for all other versions
-          This is the default
+        This is the default
   `)
 }

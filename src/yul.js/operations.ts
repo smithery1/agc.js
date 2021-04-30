@@ -6,7 +6,7 @@
 // implemented.
 //
 
-import { isBlk2, Options } from './bootstrap'
+import { Options } from './bootstrap'
 
 /**
  * The requirements for the presence of field.
@@ -203,7 +203,7 @@ function IO (
 }
 
 export function createOperations (options: Options): Operations {
-  return isBlk2(options.yulVersion) ? new Blk2Operations() : new AgcOperations()
+  return options.version.isBlk2() ? new Blk2Operations() : new AgcOperations()
 }
 
 export function isBlk2Operations (ops: Operations): ops is Blk2Operations {

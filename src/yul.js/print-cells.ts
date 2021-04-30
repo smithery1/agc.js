@@ -1,4 +1,3 @@
-import { isGap, isYul, YulVersion } from './bootstrap'
 import { Cell } from './cells'
 import * as mem from './memory'
 import * as parse from './parser'
@@ -6,6 +5,7 @@ import { Pass2Output } from './pass2'
 import { PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
 import { parity } from './util'
+import * as versions from './versions'
 
 const MEM_SPECIAL = 'SPECIAL OR NONEXISTENT MEMORY'
 const MEM_AVAIL = 'AVAILABLE'
@@ -40,12 +40,12 @@ const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
 export function printMemorySummary (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const def = isYul(context.options.yulVersion) ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
+  const def = context.options.version.isYul() ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
 
   printTable(context, def, entries())
 
   function * entries (): Generator<string[]> {
-    const yul = isYul(context.options.yulVersion)
+    const yul = context.options.version.isYul()
     const ranges = memory.memoryRanges()
     let i = 0
 
@@ -138,7 +138,7 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
     function adjustEnd (max: number): number {
       // Y1966 and earlier do not consider the checksum cell "used"
       const maxCell = cells[max]
-      if (context.options.yulVersion <= YulVersion.Y1966
+      if (context.options.version.isAtMost(versions.Enum.Y1966)
         && maxCell !== undefined
         && parse.isClerical(maxCell.definition.card)
         && maxCell.definition.card.operation.operation === context.operations.BNKSUM) {
@@ -189,9 +189,10 @@ const PARAGRAPHS_HEADER = 'PARAGRAPHS GENERATED FOR THIS ASSEMBLY; ADDRESS LIMIT
 export function printParagraphs (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const rowsPerPage = isYul(context.options.yulVersion) ? 50 : 45
+  const isYul = context.options.version.isYul()
+  const rowsPerPage = isYul ? 50 : 45
 
-  const header = PARAGRAPHS_HEADER + (isYul(context.options.yulVersion) ? '.' : '')
+  const header = PARAGRAPHS_HEADER + (isYul ? '.' : '')
   let row = 0
   let separator = 0
 
@@ -210,7 +211,7 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
       ++separator
       continue
     }
-    if (isYul(context.options.yulVersion) && ++separator === 5) {
+    if (isYul && ++separator === 5) {
       context.printer.println('')
       ++row
       separator = 1
@@ -230,7 +231,7 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
     const bankAndAddress = memory.asBankAndAddress(address)
     const bank = memory.fixedBankNumber(address)
 
-    if (isGap(context.options.yulVersion) && address === 0x2000) {
+    if (!isYul && address === 0x2000) {
       context.printer.println('')
       // First page has 1 fewer line than other pages, so skip an extra here.
       row += 2
@@ -269,9 +270,10 @@ const OCTAL_LISTING_COLUMNS = {
 export function printOctalListing (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const ofFor = isYul(context.options.yulVersion) ? 'OF' : 'FOR'
-  const punct = isYul(context.options.yulVersion) ? ';' : ','
-  const period = isYul(context.options.yulVersion) ? '.' : ''
+  const isYul = context.options.version.isYul()
+  const ofFor = isYul ? 'OF' : 'FOR'
+  const punct = isYul ? ';' : ','
+  const period = isYul ? '.' : ''
   const used = cacheUsedParagraphs(cells, context)
   let usedOffset = 0
 

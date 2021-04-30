@@ -20,8 +20,8 @@ export interface Words {
 interface Mantissa { whole: string, fractional: string }
 interface Parts { positive?: boolean, mantissa?: Mantissa, exponent?: number, scaling?: number }
 
-const OCTAL_EXPR = /[0-7]*\.?[0-7]*/
-const DECIMAL_EXPR = /\d+/
+const OCTAL_EXPR = /^[0-7]*\.?[0-7]*$/
+const DECIMAL_EXPR = /^\d+$/
 
 const SP_INT_MAX = 0x4000
 const DP_INT_MAX = 0x10000000
@@ -139,7 +139,7 @@ function lexOctal (
 
   if (parsed.mantissa !== undefined
     && (!OCTAL_EXPR.test(parsed.mantissa.whole) || !OCTAL_EXPR.test(parsed.mantissa.fractional))) {
-    localCusses.add(cusses.Cuss21)
+    localCusses.add(cusses.Cuss39)
     return undefined
   }
 

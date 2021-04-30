@@ -65,6 +65,11 @@
 # are ignored.
 #
 
+declare -r YS_NAME="yul.js    "
+declare -r YM_NAME="yaYUL main"
+declare -r YF_NAME="yaYUL fork"
+declare -r BS_NAME="binsource "
+
 function usageAndExit
 {
     echo "usage: $1 <config file> [test ...]" 1>&2
@@ -73,19 +78,27 @@ function usageAndExit
 
 function runTask
 {
+    startTask "$@"
+    shift 3
+
+    "$@" > $TMP_FILE 2>&1
+    RESULT=$?
+    endTask $RESULT
+    [[ -s $TMP_FILE ]] && cat $TMP_FILE
+    return $RESULT
+}
+
+function startTask
+{
     local NUMBER="$1"
     local TOTAL="$2"
-    local ASSEMBLER="$3"
-    local TYPE="$4"
-    local FUNC="$5"
-    shift 5
+    local DESC="$3"
+    echo -n "($NUMBER/$TOTAL) $DESC..."
+}
 
-    local ARGS="$2"
-    [[ -n "$ARGS" ]] && ARGS=" with args $ARGS"
-    echo -n "($NUMBER/$TOTAL) $ASSEMBLER assembling $1$ARGS..."
-    $FUNC "$@" > $TMP_FILE 2>&1
-    RESULT=$?
-    if (( $RESULT == 0 ))
+function endTask
+{
+    if (( $1 == 0 ))
     then
         if [[ -t 1 ]]
         then
@@ -96,8 +109,22 @@ function runTask
     else
         echo FAILED
     fi
-    [[ -s $TMP_FILE ]] && cat $TMP_FILE
-    return $RESULT
+}
+
+function assemblyTask
+{
+    local NUMBER="$1"
+    local TOTAL="$2"
+    local ASSEMBLER="$3"
+    local FUNC="$4"
+    local DIR="$5"
+    local ARGS="$6"
+    local OUT="$7"
+
+    local ARGS_DESC="$3"
+    [[ -n "$ARGS_DESC" ]] && ARGS_DESC=" with args $ARGS"
+    local DESC="$ASSEMBLER assembing $DIR$ARGS_DESC..."
+    runTask "$NUMBER" "$TOTAL" "$DESC" "$FUNC" "$DIR" "$ARGS" "$OUT"
 }
 
 function compare
@@ -126,11 +153,6 @@ function compareAll
     local YAYUL_FORK_OUT="$3"
     local BINSOURCE_OUT="$4"
     local FAILED=0
-
-    local YS_NAME="yul.js    "
-    local YM_NAME="yaYUL main"
-    local YF_NAME="yaYUL fork"
-    local BS_NAME="binsource "
 
     [[ -n "$BINSOURCE_OUT" ]] && {
         compare "$YULJS_OUT" "$YS_NAME" "$BINSOURCE_OUT" "$BS_NAME" || FAILED=1
@@ -190,12 +212,96 @@ function sanitizeBinsource
     egrep '^([0-9]| *@)' /tmp/oct2bin.proof > "$OUTPUT"
 }
 
+function countMin
+{
+    local COUNT=$1
+    local FILE="$2"
+
+    if [[ -z "$FILE" ]]
+    then
+        echo $COUNT
+    else
+        local FILE_COUNT=$(wc -l < "$FILE")
+
+        if (( $COUNT == 0 || $COUNT > $FILE_COUNT ))
+        then
+            echo $FILE_COUNT
+        else
+            echo $COUNT
+        fi
+    fi
+
+    return 0
+}
+
+function checkTails
+{
+    local COUNT=$1
+    local YULJS_FORK_OUT="$2"
+    local YAYUL_FORK_OUT="$3"
+    local YAYUL_MAIN_OUT="$4"
+    local BINSOURCE_OUT="$5"
+
+    if ! checkTail $COUNT "$YULJS_FORK_OUT" $YS_NAME \
+        || ! checkTail $COUNT "$YAYUL_FORK_OUT" $YF_NAME \
+        || ! checkTail $COUNT "$YAYUL_MAIN_OUT" $YM_NAME \
+        || ! checkTail $COUNT "$BINSOURCE_OUT" $BS_NAME
+    then
+        return 1
+    fi
+
+    return 0
+}
+
+function checkTail
+{
+    local COUNT=$1
+    local FILE="$2"
+    [[ -z "$FILE" ]] && return 0
+    local NAME="$3"
+    local FILE_COUNT=$(wc -l < "$FILE")
+    local TAIL_COUNT=$(( $FILE_COUNT - $COUNT ))
+
+    (( $TAIL_COUNT == 0 )) && return 0
+    tail -$TAIL_COUNT "$FILE" | egrep -q -v '^[0 \t]*$'
+    if (( $? == 0 ))
+    then
+        echo "X: $NAME has non-zero data after line $COUNT"
+        echo "   $FILE"
+        return 1
+    fi
+
+    return 0
+}
+
+function truncateCounts
+{
+    local COUNT=$1
+    local YULJS_FORK_OUT="$2"
+    local YAYUL_FORK_OUT="$3"
+    local YAYUL_MAIN_OUT="$4"
+    local BINSOURCE_OUT="$5"
+
+    truncateCount $COUNT "$YULJS_FORK_OUT" || return 1
+    truncateCount $COUNT "$YAYUL_FORK_OUT" || return 1
+    truncateCount $COUNT "$YAYUL_MAIN_OUT" || return 1
+    truncateCount $COUNT "$BINSOURCE_OUT" || return 1
+}
+
+function truncateCount
+{
+    local COUNT=$1
+    local FILE="$2"
+    [[ -z "$FILE" ]] && return 0
+    head -$COUNT "$FILE" > $TMP_FILE || return 1
+    mv $TMP_FILE "$FILE" || return 1
+}
+
 function testCodeBase
 {
     local CODE="$1"
     local YULJS_ARGS="$2"
     local YAYUL_ARGS="$3"
-    local LINES="$4"
     local FORK_CODE_DIR="$FORK_REPO/$CODE"
     local FORK_MAIN="$FORK_CODE_DIR/MAIN.agc"
     local MAIN_CODE_DIR="$MAIN_REPO/$CODE"
@@ -205,27 +311,43 @@ function testCodeBase
     local YAYUL_MAIN_OUT="$MAIN_CODE_DIR/${CODE}.yaYUL.oct"
     local BINSOURCE="$MAIN_CODE_DIR/${CODE}.binsource"
     local BINSOURCE_OUT=
+    local COUNT=0
+    local TOTAL_TASKS=6
+    local TASK=0
 
     if [[ -f "$BINSOURCE" ]]
     then
         BINSOURCE_OUT=${BINSOURCE}.oct
-        sanitizeBinsource "$YAYUL_ARGS" "$BINSOURCE" "$BINSOURCE_OUT" || return 1
+        runTask 1 $TOTAL_TASKS "sanitizeBinsource" \
+            sanitizeBinsource "$YAYUL_ARGS" "$BINSOURCE" "$BINSOURCE_OUT" || return 1
+        TASK=1
+        let TOTAL_TASKS=$TOTAL_TASKS+1
     fi
 
-    runTask 1 3 yaYUL main yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" || return 1
-    runTask 2 3 yaYUL fork yaYulAssemble "$FORK_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_FORK_OUT" || return 1
-    runTask 3 3 yulJs fork yulJsAssemble "$FORK_CODE_DIR" "$YULJS_ARGS" "$YULJS_FORK_OUT" || return 1
+    let TASK=$TASK+1
+    assemblyTask $TASK $TOTAL_TASKS yaYUL yaYulAssemble "$MAIN_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_MAIN_OUT" || return 1
+    let TASK=$TASK+1
+    assemblyTask $TASK $TOTAL_TASKS yaYUL yaYulAssemble "$FORK_CODE_DIR" "$YAYUL_ARGS" "$YAYUL_FORK_OUT" || return 1
+    let TASK=$TASK+1
+    assemblyTask $TASK $TOTAL_TASKS yulJs yulJsAssemble "$FORK_CODE_DIR" "$YULJS_ARGS" "$YULJS_FORK_OUT" || return 1
 
-    if [[ -n "$LINES" ]]
-    then
-        head -$LINES "$YAYUL_MAIN_OUT" > $TMP_FILE || return 1
-        mv $TMP_FILE "$YAYUL_MAIN_OUT" || return 1
-        head -$LINES "$YAYUL_FORK_OUT" > $TMP_FILE || return 1
-        mv $TMP_FILE "$YAYUL_FORK_OUT" || return 1
-        head -$LINES "$YULJS_FORK_OUT" > $TMP_FILE || return 1
-        mv $TMP_FILE "$YULJS_FORK_OUT" || return 1
-    fi
+    let TASK=$TASK+1
+    startTask $TASK $TOTAL_TASKS "Count lines"
+    COUNT=$(countMin $COUNT "$YULJS_FORK_OUT")
+    COUNT=$(countMin $COUNT "$YAYUL_FORK_OUT")
+    COUNT=$(countMin $COUNT "$YAYUL_MAIN_OUT")
+    COUNT=$(countMin $COUNT "$BINSOURCE_OUT")
+    endTask 0
 
+    let TASK=$TASK+1
+    runTask $TASK $TOTAL_TASKS "Check tails" checkTails \
+        $COUNT "$YULJS_FORK_OUT" "$YAYUL_FORK_OUT" "$YAYUL_MAIN_OUT" "$BINSOURCE_OUT" || return 1
+
+    let TASK=$TASK+1
+    runTask $TASK $TOTAL_TASKS "Truncate counts" truncateCounts \
+        $COUNT "$YULJS_FORK_OUT" "$YAYUL_FORK_OUT" "$YAYUL_MAIN_OUT" "$BINSOURCE_OUT" || return 1
+
+    echo "$COUNT lines of output"
     compareAll "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT" "$BINSOURCE_OUT" || return 1
     rm "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT"
     [[ -n "$BINSOURCE_OUT" ]] && rm "$BINSOURCE_OUT"
@@ -238,7 +360,6 @@ function runTests
     local CODE
     local YULJS_ARGS
     local YAYUL_ARGS
-    local LINES
 
     for CODELINE in "$@"
     do
@@ -249,7 +370,6 @@ function runTests
         CODE=$1
         YULJS_ARGS=${2:-''}
         YAYUL_ARGS=${3:-''}
-        LINES=${4:-''}
 
         cat << EOF
 
@@ -257,7 +377,7 @@ function runTests
 $CODELINE
 -----------------------------------------------------------------------------------------------------------------------
 EOF
-        if ! testCodeBase "$CODE" "$YULJS_ARGS" "$YAYUL_ARGS" "$LINES"
+        if ! testCodeBase "$CODE" "$YULJS_ARGS" "$YAYUL_ARGS"
         then
             IFS=$NL_IFS
             FAILURES="$FAILURES
