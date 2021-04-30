@@ -3,6 +3,7 @@ import { Options } from './bootstrap'
 import * as cusses from './cusses'
 import * as ops from './operations'
 import { SymbolTable } from './symbol-table'
+import * as utils from './util'
 
 /**
  * An offset subfield, which represents a signed numeric subfield in the source.
@@ -13,8 +14,7 @@ export interface Offset {
 
 /**
  * An address field, which represents the operand in the source.
- * In addition to the data specified in address-field.ts, contains an optional index register for interpretive
- * operations.
+ * Contains value, optional offset, and an optional index register for interpretive operations.
  */
 export interface AddressField {
   readonly value: string | number | Offset
@@ -23,7 +23,8 @@ export interface AddressField {
 }
 
 /**
- * A "true address" or "pseudo address" is an actual absolute memory location, range 0 - 117777(8).
+ * A "true address" or "pseudo address" is an absolute memory location, range zero to the max supported by the
+ * Memory instance in use.
  * Address fields eventually resolve to this.
  * Any offset is provided separately for interpretation by the assembler.
  */
@@ -31,9 +32,6 @@ export interface TrueAddress {
   readonly address: number
   readonly offset: number
 }
-
-export const SIGNED_EXPR = /^[+-]\d+D?$/
-export const UNSIGNED_EXPR = /^\d+D?$/
 
 const DECIMAL_INTEGER_EXPR = /^[0-9]+D?$/
 const OCTAL_INTEGER_EXPR = /^[0-7]+$/
@@ -61,7 +59,7 @@ export function parse (
     ? INDEXED_FIELD_EXPR.exec(field)
     : ADDRESS_FIELD_EXPR.exec(field)
   if (match === null || match[1] === undefined) {
-    // If ERASE field does not match standard address form, check for a range.
+    // If an ERASE field does not match the standard address form, check for a range.
     if (rangeAllowed) {
       return parseErase(field, parseCusses)
     }
@@ -89,7 +87,7 @@ export function parse (
     }
   }
 
-  if (UNSIGNED_EXPR.test(match[1])) {
+  if (utils.isUnsigned(match[1])) {
     const parsed = parseUnsigned(match[1], MAX_15_BITS, parseCusses)
     if (parsed === undefined) {
       return undefined
@@ -97,7 +95,7 @@ export function parse (
     return { value: parsed, offset, indexRegister }
   }
 
-  if (SIGNED_EXPR.test(match[1])) {
+  if (utils.isSigned(match[1])) {
     const parsed = parseSignedOffset(match[1], parseCusses)
     if (parsed === undefined) {
       return undefined
@@ -129,7 +127,7 @@ export function parse (
   }
 
   function parseSignedOffset (signed: string, parseCusses: cusses.Cusses): number | undefined {
-    if (!SIGNED_EXPR.test(signed)) {
+    if (!utils.isSigned(signed)) {
       parseCusses.add(cusses.Cuss3D)
     }
 
@@ -196,8 +194,8 @@ export function parse (
  * Ref SYM, III-3 (published later) states "A symbol followed by a space and then a signed integer is treated by the
  * assembler as if the value of the integer modified the octal instruction (operation code *and* address)."
  * Neither appear to be completely correct.
- * Empirically, the rule seems to be that a numeric and a signed numeric subfield modifies the octal instruction, while
- * a symbolic and a signed numeric subfield modifies only the address.
+ * Empirically, the rule seems to be that a numeric field with a signed numeric subfield modifies the octal instruction,
+ * while a symbolic field with a signed numeric subfield modifies only the address.
  *
  * @param address the address field
  * @param locationCounter the location counter for the instruction with the specified address field
@@ -245,16 +243,16 @@ export type Resolver = (symbol: string) => number | undefined
 
 /**
  * Resolves a pass 1 reference to a numeric address.
- * Note that address + offset is not required here, as it is for the resolve function above.
+ * Note that returning a separate offset is not required here, as it is for the resolve function above.
  * Anything referenced as a symbol must resolve to a single numeric address, so any offset is simply added to the
  * address.
- * Called by the symbol tables with resolvers appropriate to pass 1 or pass 2.
+ * Can be called by the symbol tables with resolvers appropriate to pass 1 or pass 2.
  *
  * @param address the address field
  * @param locationCounter the location counter for the instruction with the specified address field
  * @param requester the card containing the specified address field
- * @param resolver the resolved for symbols to locations
- * @returns the true address or undefined
+ * @param resolver the resolver for symbols to locations
+ * @returns the resolved true address or undefined
  */
 export function resolvePass1Reference (
   address: AddressField, locationCounter: number | undefined, requester: AssembledCard | undefined, resolver: Resolver):

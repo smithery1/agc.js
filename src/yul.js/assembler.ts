@@ -41,11 +41,7 @@ import { PrintContext, printCuss, PrinterContext } from './printer-utils'
  *     "General Formatting Information",
  *     https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
  *
- * After both passes have run, prints the following.
- * All output mimics the YUL output of the same type.
- * - The assembly, with any errors inline
- * - The symbol table and unreferenced symbols list
- * - The cell contents
+ * After both passes have run, prints output per the Options passed to it.
  */
 export default class Assembler {
   private readonly sectionDispatch = {

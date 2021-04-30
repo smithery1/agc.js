@@ -31,6 +31,9 @@ export enum MemoryType {
   Nonexistent
 }
 
+/**
+ * A memory range with its type.
+ */
 export interface MemoryRange extends Range {
   type: MemoryType
 }
@@ -139,7 +142,8 @@ export class Memory {
    * GAP output on MEMORY TYPE & AVAILABILITY DISPLAY page shows banks above 043
    * that are never used.
    *
-   * @param fixedBanks the number of fixed banks typically 027, 037, 043, or 053
+   * @param fixedBanks the number of fixed banks typically 027, 037, 043
+   * @param nonexistentHighMem special unaddressable high memory, if any
    * @throws if fixedBanks is not in the range [027, 043]
    */
   constructor (fixedBanks: number, nonexistentHighMem: Range | undefined) {

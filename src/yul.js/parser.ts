@@ -6,7 +6,7 @@ import { lex, LexedLine, LineType } from './lexer'
 import { Memory, MemoryType } from './memory'
 import { lexNumeric } from './numeric-card'
 import * as ops from './operations'
-import { isWhitespace, isWholeOctal } from './util'
+import * as utils from './util'
 
 /**
  * A parsed location field.
@@ -321,15 +321,15 @@ export class Parser {
       return {}
     }
 
-    if (field.SIGNED_EXPR.test(token)) {
+    if (utils.isSigned(token)) {
       return {}
     }
 
-    if (field.UNSIGNED_EXPR.test(token)) {
+    if (utils.isUnsigned(token)) {
       this.cardCusses.add(cusses.Cuss4A)
     }
 
-    if (isWhitespace(token)) {
+    if (utils.isWhitespace(token)) {
       this.cardCusses.add(cusses.Cuss47)
     }
 
@@ -499,7 +499,7 @@ export class Parser {
     const bb = addressField.slice(2, 4)
     const llll = addressField.slice(4)
 
-    if (!isWholeOctal(bb) || !isWholeOctal(llll)) {
+    if (!utils.isWholeOctal(bb) || !utils.isWholeOctal(llll)) {
       this.cardCusses.add(cusses.Cuss3D)
       return undefined
     }

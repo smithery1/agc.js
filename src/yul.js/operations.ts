@@ -202,18 +202,23 @@ function IO (
   return new IO(type, pushDown, indexable, indirect, erasableMemory, fixedMemory)
 }
 
+/**
+ * Creates and returns an Operations instance appropriate for the assembler type in the specified options.
+ *
+ * @param options the assembler options
+ * @returns the Operations instance
+ */
 export function createOperations (options: Options): Operations {
   return options.version.isBlk2() ? new Blk2Operations() : new AgcOperations()
 }
 
-export function isBlk2Operations (ops: Operations): ops is Blk2Operations {
-  return ops instanceof Blk2Operations
-}
-
-export function isAgcOperations (ops: Operations): ops is AgcOperations {
-  return ops instanceof AgcOperations
-}
-
+/**
+ * Container of information about all assembly operations available for a particular assembler type.
+ *
+ * The user of the class must be aware of the existence of variations in operations across assembler types in most
+ * cases, but this class provides general functions that insulate the user from the particulars of those variations.
+ * Provides lookup of an operation from its symbol and access to most operations by name at compile time.
+ */
 export abstract class Operations {
   readonly ops = new Map<string, BaseOperation>()
 
@@ -828,7 +833,7 @@ export abstract class Operations {
   readonly SETGO = this.addInterpretiveLogical('SETGO', '1', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
 }
 
-export class Blk2Operations extends Operations {
+class Blk2Operations extends Operations {
   // Ref MISCJUMP table in LIST_PROCESSING_INTERPRETER for Aurora 12 vs same table in INTERPRETER for later code bases.
   // CALL/ITA and RTB/BHIZ are swapped in Aurora 12
   readonly CALL = this.addInterpretiveMiscRhs('CALL', '30', IO(InterpretiveOperandType.Address, false, false, true, true, true))
@@ -909,7 +914,7 @@ export class Blk2Operations extends Operations {
   }
 }
 
-export class AgcOperations extends Operations {
+class AgcOperations extends Operations {
   // See note in Blk2Operations
   readonly RTB = this.addInterpretiveMisc('RTB', '30', IO(InterpretiveOperandType.Address, false, false, false, false, true))
   readonly BHIZ = this.addInterpretiveMisc('BHIZ', '31', IO(InterpretiveOperandType.Address, false, false, true, true, true))

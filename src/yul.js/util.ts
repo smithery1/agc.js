@@ -22,6 +22,28 @@ export function isWholeOctal (str: string): boolean {
   return OCTAL_EXPR.test(str)
 }
 
+const SIGNED_EXPR = /^[+-]\d+D?$/
+/**
+ * Returns true iff the specified string is a signed numeric value.
+ *
+ * @param str the string to test
+ * @returns true iff the specified string is a signed numeric value
+ */
+export function isSigned (str: string): boolean {
+  return SIGNED_EXPR.test(str)
+}
+
+const UNSIGNED_EXPR = /^\d+D?$/
+/**
+ * Returns true iff the specified string is an unsigned numeric value.
+ *
+ * @param str the string to test
+ * @returns true iff the specified string is an unsigned numeric value
+ */
+export function isUnsigned (str: string): boolean {
+  return UNSIGNED_EXPR.test(str)
+}
+
 /**
  * Returns true if the specified word should have a parity bit of 1 and false if it should have a parity bit of 0.
  * The AGC parity is defined as the single bit value required to make the sum of bit values in the word odd, including
