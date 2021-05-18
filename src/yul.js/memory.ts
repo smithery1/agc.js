@@ -38,13 +38,58 @@ export interface MemoryRange extends Range {
   type: MemoryType
 }
 
-const TRUE_ADDRESS_RANGES: MemoryRange[] = [
+const BLOCK1_TRUE_ADDRESS_RANGES: MemoryRange[] = [
   // Hardware, cannot reserve
   { min: 0x0000, max: 0x0007, type: MemoryType.Hardware },
   // Special erasable, cannot reserve
-  { min: 0x0008, max: 0x0030, type: MemoryType.Special_Erasable },
+  { min: 0x0008, max: 0x002F, type: MemoryType.Special_Erasable },
   // Erasable bank 0, unswitched
-  { min: 0x0031, max: 0x00FF, type: MemoryType.Unswitched_Banked_Erasable },
+  { min: 0x0030, max: 0x00FF, type: MemoryType.Unswitched_Banked_Erasable },
+  // Erasable banks 1-3, unswitched
+  { min: 0x0100, max: 0x01FF, type: MemoryType.Unswitched_Banked_Erasable },
+  { min: 0x0200, max: 0x02FF, type: MemoryType.Unswitched_Banked_Erasable },
+  { min: 0x0300, max: 0x03FF, type: MemoryType.Unswitched_Banked_Erasable },
+  // Fixed banks 01-02, fixed-fixed
+  { min: 0x0400, max: 0x07FF, type: MemoryType.Fixed_Fixed },
+  { min: 0x0800, max: 0x0BFF, type: MemoryType.Fixed_Fixed },
+  // Fixed banks 03-14, variable-fixed
+  { min: 0x0C00, max: 0x0FFF, type: MemoryType.Variable_Fixed },
+  { min: 0x1000, max: 0x13FF, type: MemoryType.Variable_Fixed },
+  { min: 0x1400, max: 0x17FF, type: MemoryType.Variable_Fixed },
+  { min: 0x1800, max: 0x1BFF, type: MemoryType.Variable_Fixed },
+  { min: 0x1C00, max: 0x1FFF, type: MemoryType.Variable_Fixed },
+  { min: 0x2000, max: 0x23FF, type: MemoryType.Variable_Fixed },
+  { min: 0x2400, max: 0x27FF, type: MemoryType.Variable_Fixed },
+  { min: 0x2800, max: 0x2BFF, type: MemoryType.Variable_Fixed },
+  { min: 0x2C00, max: 0x2FFF, type: MemoryType.Variable_Fixed },
+  { min: 0x3000, max: 0x33FF, type: MemoryType.Variable_Fixed },
+  // Nonexistent banks 15-20
+  { min: 0x3400, max: 0x37FF, type: MemoryType.Nonexistent },
+  { min: 0x3800, max: 0x3BFF, type: MemoryType.Nonexistent },
+  { min: 0x3C00, max: 0x3FFF, type: MemoryType.Nonexistent },
+  { min: 0x4000, max: 0x43FF, type: MemoryType.Nonexistent },
+  // Fixed banks 21-34
+  { min: 0x4400, max: 0x47FF, type: MemoryType.Variable_Fixed },
+  { min: 0x4800, max: 0x4BFF, type: MemoryType.Variable_Fixed },
+  { min: 0x4C00, max: 0x4FFF, type: MemoryType.Variable_Fixed },
+  { min: 0x5000, max: 0x53FF, type: MemoryType.Variable_Fixed },
+  { min: 0x5400, max: 0x57FF, type: MemoryType.Variable_Fixed },
+  { min: 0x5800, max: 0x5BFF, type: MemoryType.Variable_Fixed },
+  { min: 0x5C00, max: 0x5FFF, type: MemoryType.Variable_Fixed },
+  { min: 0x6000, max: 0x63FF, type: MemoryType.Variable_Fixed },
+  { min: 0x6400, max: 0x67FF, type: MemoryType.Variable_Fixed },
+  { min: 0x6800, max: 0x6BFF, type: MemoryType.Variable_Fixed },
+  { min: 0x6C00, max: 0x6FFF, type: MemoryType.Variable_Fixed },
+  { min: 0x7000, max: 0x73FF, type: MemoryType.Variable_Fixed }
+]
+
+const BLOCK2_TRUE_ADDRESS_RANGES: MemoryRange[] = [
+  // Hardware, cannot reserve
+  { min: 0x0000, max: 0x0007, type: MemoryType.Hardware },
+  // Special erasable, cannot reserve
+  { min: 0x0008, max: 0x002F, type: MemoryType.Special_Erasable },
+  // Erasable bank 0, unswitched
+  { min: 0x0030, max: 0x00FF, type: MemoryType.Unswitched_Banked_Erasable },
   // Erasable banks 1-2, unswitched
   { min: 0x0100, max: 0x01FF, type: MemoryType.Unswitched_Banked_Erasable },
   { min: 0x0200, max: 0x02FF, type: MemoryType.Unswitched_Banked_Erasable },
@@ -55,8 +100,8 @@ const TRUE_ADDRESS_RANGES: MemoryRange[] = [
   { min: 0x0600, max: 0x06FF, type: MemoryType.Switched_Erasable },
   { min: 0x0700, max: 0x07FF, type: MemoryType.Switched_Erasable },
   // Fixed banks 02-03, fixed-fixed
-  { min: 0x800, max: 0xBFF, type: MemoryType.Fixed_Fixed },
-  { min: 0xC00, max: 0xFFF, type: MemoryType.Fixed_Fixed },
+  { min: 0x0800, max: 0x0BFF, type: MemoryType.Fixed_Fixed },
+  { min: 0x0C00, max: 0x0FFF, type: MemoryType.Fixed_Fixed },
   // Fixed banks 00-01, variable-fixed
   { min: 0x1000, max: 0x13FF, type: MemoryType.Variable_Fixed },
   { min: 0x1400, max: 0x17FF, type: MemoryType.Variable_Fixed },
@@ -110,82 +155,47 @@ const TRUE_ADDRESS_RANGES: MemoryRange[] = [
   { min: 0xEC00, max: 0xEFFF, type: MemoryType.Variable_Fixed }
 ]
 
-const FIXED_BANKS_START_INDEX = 10
-const NONEXISTENT_BANK_02_INDEX = 14
-const FIXED_BANK_04_INDEX = 15
-const S3_START_INDEX = 35
+const BLOCK2_FIXED_BANKS_START_INDEX = 10
+const BLOCK2_NONEXISTENT_BANK_02_INDEX = 14
+const BLOCK2_FIXED_BANK_04_INDEX = 15
+const BLOCK2_S3_START_INDEX = 35
 
 export function createMemory (options: Options): Memory {
+  if (options.target.isBlock1()) {
+    return new Block1Memory()
+  }
+
   let banks: number
   let nonexistentHighMem: Range | undefined
 
-  if (options.version.isGap()) {
+  if (options.target.isGap()) {
     banks = 43
     nonexistentHighMem = { min: 0xF000, max: 0xFFFF }
-  } else if (options.version.isBlk2()) {
+  } else if (options.target.isBlk2()) {
     banks = 23
   } else {
     banks = 35
     nonexistentHighMem = { min: 0xA000, max: 0xEFFF }
   }
-  return new Memory(banks, nonexistentHighMem)
+  return new Block2Memory(banks, nonexistentHighMem)
 }
 
-export class Memory {
-  private readonly ranges: MemoryRange[]
-  private readonly fixedBanks: MemoryRange[]
-  private readonly nonExistent: MemoryRange[]
+export abstract class Memory {
+  private readonly erasableBanksCount: number
+  private readonly fixedMemoryStartAddress: number
   private readonly highMemory: number
 
-  /**
-   * Constructs a memory representation with the specified number of banks.
-   * GAP output on MEMORY TYPE & AVAILABILITY DISPLAY page shows banks above 043
-   * that are never used.
-   *
-   * @param fixedBanks the number of fixed banks typically 027, 037, 043
-   * @param nonexistentHighMem special unaddressable high memory, if any
-   * @throws if fixedBanks is not in the range [027, 043]
-   */
-  constructor (fixedBanks: number, nonexistentHighMem: Range | undefined) {
-    if (fixedBanks < 23 || fixedBanks > 43) {
-      throw new Error('fixedBanks out of range')
-    }
-
-    this.ranges = []
-    this.fixedBanks = []
-    this.nonExistent = []
-
-    for (let i = 0; i < FIXED_BANK_04_INDEX; i++) {
-      this.ranges.push(TRUE_ADDRESS_RANGES[i])
-    }
-
-    this.fixedBanks.push(TRUE_ADDRESS_RANGES[FIXED_BANKS_START_INDEX + 2])
-    this.fixedBanks.push(TRUE_ADDRESS_RANGES[FIXED_BANKS_START_INDEX + 3])
-    this.fixedBanks.push(TRUE_ADDRESS_RANGES[FIXED_BANKS_START_INDEX + 0])
-    this.fixedBanks.push(TRUE_ADDRESS_RANGES[FIXED_BANKS_START_INDEX + 1])
-    this.nonExistent.push(TRUE_ADDRESS_RANGES[NONEXISTENT_BANK_02_INDEX])
-
-    let i = 0
-    let fixedBanksRemaining = fixedBanks - 3
-    while (fixedBanksRemaining > 0) {
-      const range = TRUE_ADDRESS_RANGES[FIXED_BANK_04_INDEX + i++]
-      this.ranges.push(range)
-      if (range.type === MemoryType.Nonexistent) {
-        this.nonExistent.push(range)
-      } else {
-        this.fixedBanks.push(range)
-        --fixedBanksRemaining
-      }
-    }
-
-    if (nonexistentHighMem !== undefined) {
-      // Add the nonexistent high memory
-      const range = { min: nonexistentHighMem?.min, max: nonexistentHighMem?.max, type: MemoryType.Nonexistent }
-      this.ranges.push(range)
-      this.nonExistent.push(range)
-    }
-
-    this.highMemory = this.ranges[this.ranges.length - 1].max
+  constructor (
+    private readonly ranges: MemoryRange[],
+    private readonly fixedBanks: MemoryRange[],
+    private readonly firstFixedBank: number,
+    private readonly nonExistent: MemoryRange[]
+  ) {
+    this.erasableBanksCount = ranges.reduce((total: number, range: MemoryRange) => {
+      return this.isErasable(range.type) ? total + 1 : total
+    }, 0)
+    this.fixedMemoryStartAddress = ranges.find(range => this.isFixed(range.type))?.min ?? 0
+    this.highMemory = ranges[ranges.length - 1].max
   }
 
   /**
@@ -240,12 +250,30 @@ export class Memory {
   }
 
   /**
+   * Returns the number of erasable banks in this memory.
+   *
+   * @returns the number of erasable banks in this memory
+   */
+  numErasableBanks (): number {
+    return this.erasableBanksCount
+  }
+
+  /**
    * Returns the number of fixed banks in this memory.
    *
    * @returns the number of fixed banks in this memory
    */
   numFixedBanks (): number {
     return this.fixedBanks.length
+  }
+
+  /**
+   * Returns the number of the first fixed bank in this memory.
+   *
+   * @returns the number of the first fixed bank in this memory
+   */
+  firstFixedBankNumber (): number {
+    return this.firstFixedBank
   }
 
   /**
@@ -256,7 +284,7 @@ export class Memory {
    * @returns the true address range for the specified fixed bank number
    */
   fixedBankRange (bank: number): Range | undefined {
-    return this.fixedBanks[bank]
+    return this.fixedBanks[bank - this.firstFixedBank]
   }
 
   /**
@@ -272,17 +300,21 @@ export class Memory {
       return undefined
     }
 
-    return result.bank.sBank === 4 ? result.bank.fBank + 8 : result.bank.fBank
+    if (result.bank.sBank === undefined || result.bank.sBank === 3) {
+      return result.bank.fBank
+    }
+
+    return result.bank.fBank + 8 * (result.bank.sBank - 3)
   }
 
   /**
-   * Returns true iff the specified bank number corresponds to an erasable bank, i.e. is in the range [0, 7].
+   * Returns true iff the specified bank number corresponds to an erasable bank for this memory.
    *
    * @param bank the bank number to examine
    * @returns true iff the specified bank number corresponds to an erasable bank
    */
   isErasableBank (bank: number): boolean {
-    return bank >= 0 && bank <= 7
+    return bank >= 0 && bank < this.numErasableBanks()
   }
 
   /**
@@ -292,7 +324,8 @@ export class Memory {
    * @returns true iff the specified bank number corresponds to a fixed bank
    */
   isFixedBank (bank: number): boolean {
-    return bank >= 0 && bank <= this.numFixedBanks()
+    const adjusted = bank - this.firstFixedBank
+    return adjusted >= 0 && adjusted < this.numFixedBanks()
   }
 
   /**
@@ -302,38 +335,11 @@ export class Memory {
    * @param bank the bank number to examine
    * @returns the FBANK number and SBANK number if applicable for the specified fixed bank number
    */
-  fixedBankNumberToBank (bank: number): { fBank: number, sBank?: number } | undefined {
-    if (!this.isFixedBank(bank)) {
-      return undefined
-    }
+  abstract fixedBankNumberToBank (bank: number): { fBank: number, sBank?: number } | undefined
 
-    if (bank < 24) {
-      return { fBank: bank }
-    } else if (bank < 32) {
-      return { fBank: bank, sBank: 3 }
-    } else {
-      const sBank = Math.floor(bank / 8)
-      return { fBank: bank, sBank }
-    }
-  }
+  protected abstract asErasableBankAndAddress (trueAddress: number): { bank: Bank, address: number }
 
-  private asErasableBankAndAddress (trueAddress: number): { bank: Bank, address: number } {
-    const address = 0x300 + (trueAddress & 0xFF)
-    const eBank = (trueAddress & 0x700) >> 8
-    return { bank: { eBank }, address }
-  }
-
-  private asFixedBankAndAddress (trueAddress: number): { bank: Bank, address: number } {
-    const fixed = trueAddress >= 0x1000 ? trueAddress - 0x1000 : trueAddress
-    const address = 0x400 + (fixed & 0x3FF)
-    let allSBank = ((fixed & 0xE000) >> 13)
-    if (allSBank < 3) {
-      allSBank = 3
-    }
-    const fBank = allSBank <= 3 ? (fixed & 0x7C00) >> 10 : 0x18 + ((fixed & 0x1C00) >> 10)
-    const sBank = trueAddress < TRUE_ADDRESS_RANGES[S3_START_INDEX].min ? undefined : allSBank
-    return { bank: { fBank, sBank }, address }
-  }
+  protected abstract asFixedBankAndAddress (trueAddress: number): { bank: Bank, address: number }
 
   /**
    * Returns the bank information and S-register address for the specified true address.
@@ -354,7 +360,7 @@ export class Memory {
   /**
    * Returns the switched bank information and S-register address for the specified true address.
    * If the true address is in unswitched memory, it is returned as is with bank as undefined.
-   * Otherwise equivalent to calling asBankAddress.
+   * Otherwise equivalent to calling asBankAndAddress.
    *
    * @param trueAddress the address to translate
    * @returns the switched bank information and S-register address for the specified true address
@@ -385,61 +391,23 @@ export class Memory {
 
   /**
    * Returns the fixed complete address for the specified true address.
-   * This is the FBANK ([0, 037]) in the 4 high bits and the S-register offset ([0, 01777]) in the 10 low bits.
+   * This is the FBANK in the 4 high bits and the S-register offset ([0, 01777]) in the 10 low bits.
    * See Ref BTM, page 1-11.
    * If the address is outside the fixed memory range, undefined is returned.
    *
    * @param trueAddress the address to translate
    * @returns the fixed complete address for the specified true address
    */
-  asFixedCompleteAddress (trueAddress: number): number | undefined {
-    const bankAndAddress = this.asBankAndAddress(trueAddress)
-    if (bankAndAddress === undefined || bankAndAddress.bank.fBank === undefined) {
-      return undefined
-    }
-
-    return bankAndAddress.bank.fBank << 10 | (bankAndAddress.address - 0x400)
-  }
-
-  isLowMemoryInterpretive (trueAddress: number): boolean | undefined {
-    if (trueAddress >= this.fixedBanks[4].min) {
-      if (trueAddress <= this.fixedBanks[15].max) {
-        return true
-      }
-      if (trueAddress >= this.fixedBanks[16].min && trueAddress <= this.highMemory) {
-        return false
-      }
-    }
-  }
+  abstract asFixedCompleteAddress (trueAddress: number): number | undefined
 
   /**
    * Returns the interpretive fixed complete address, used for interpretive indexing.
-   * The true address must be in the same "half-memory" as the location counter.
-   * The returned value is the same as the fixed complete address for "low" half-memory, and similar for "high"
-   * half-memory but with the FBANK offset by -020.
-   * See Ref BTM, section 2.2.3.
-   * If the address is not in the same half-memory as the location counter, undefined is returned.
    *
    * @param locationCounter the location counter of the interpretive instruction
    * @param trueAddress the true address referenced by the IAW
    * @returns the interpretive fixed complete address
    */
-  asInterpretiveFixedAddress (locationCounter: number, trueAddress: number): number | undefined {
-    const locationLow = this.isLowMemoryInterpretive(locationCounter)
-    const addressLow = this.isLowMemoryInterpretive(trueAddress)
-    if (addressLow === undefined || addressLow !== locationLow) {
-      return undefined
-    }
-
-    const bankAndAddress = this.asBankAndAddress(trueAddress)
-    if (bankAndAddress?.bank.fBank !== undefined) {
-      if (addressLow) {
-        return bankAndAddress.bank.fBank << 10 | (bankAndAddress.address - 0x400)
-      } else {
-        return (bankAndAddress.bank.fBank - 16) << 10 | (bankAndAddress.address - 0x400)
-      }
-    }
-  }
+  abstract asInterpretiveFixedAddress (locationCounter: number, trueAddress: number): number | undefined
 
   /**
    * Formats the specified true address as an assembly string to match the YUL assembly listing.
@@ -556,7 +524,7 @@ export class Memory {
    * @returns the first fixed bank's offset from the start of memory
    */
   fixedMemoryOffset (): number {
-    return this.memoryOffset(TRUE_ADDRESS_RANGES[FIXED_BANKS_START_INDEX].min)
+    return this.memoryOffset(this.fixedMemoryStartAddress)
   }
 
   /**
@@ -593,5 +561,219 @@ export class Memory {
         }
         return total + range.max - range.min + 1
       }, offset)
+  }
+}
+
+class Block1Memory extends Memory {
+  private readonly lowMemoryMin: number
+  private readonly lowMemoryMax: number
+  private readonly highMemoryMin: number
+  private readonly highMemoryMax: number
+
+  /**
+   * Constructs a block 1 memory representation.
+   */
+  constructor () {
+    const ranges: MemoryRange[] = []
+    const fixedBanks: MemoryRange[] = []
+    const nonExistent: MemoryRange[] = []
+
+    BLOCK1_TRUE_ADDRESS_RANGES.forEach(range => {
+      ranges.push(range)
+      if (range.type === MemoryType.Nonexistent) {
+        nonExistent.push(range)
+        fixedBanks.push(range)
+      } else if (range.type === MemoryType.Fixed_Fixed || range.type === MemoryType.Variable_Fixed) {
+        fixedBanks.push(range)
+      }
+    })
+
+    super(ranges, fixedBanks, 1, nonExistent)
+
+    this.lowMemoryMin = fixedBanks[2].min
+    this.lowMemoryMax = fixedBanks[12].max
+    this.highMemoryMin = fixedBanks[13].min
+    this.highMemoryMax = fixedBanks[fixedBanks.length - 1].max
+  }
+
+  fixedBankNumberToBank (bank: number): { fBank: number, sBank?: number } | undefined {
+    if (!this.isFixedBank(bank)) {
+      return undefined
+    }
+
+    return { fBank: bank }
+  }
+
+  protected asErasableBankAndAddress (trueAddress: number): { bank: Bank, address: number } {
+    const eBank = (trueAddress & 0x700) >> 8
+    return { bank: { eBank }, address: trueAddress }
+  }
+
+  protected asFixedBankAndAddress (trueAddress: number): { bank: Bank, address: number } {
+    const fixed = trueAddress
+    const address = 0xC00 + (fixed & 0x3FF)
+    const fBank = (fixed & 0x7C00) >> 10
+    return { bank: { fBank, sBank: undefined }, address }
+  }
+
+  asFixedCompleteAddress (trueAddress: number): number | undefined {
+    const bankAndAddress = this.asBankAndAddress(trueAddress)
+    if (bankAndAddress === undefined || bankAndAddress.bank.fBank === undefined) {
+      return undefined
+    }
+
+    return bankAndAddress.bank.fBank << 10 | (bankAndAddress.address - 0xC00)
+  }
+
+  asInterpretiveFixedAddress (locationCounter: number, trueAddress: number): number | undefined {
+    if (trueAddress < 0) {
+      return -trueAddress
+    }
+    const bankAndAddress = this.asBankAndAddress(trueAddress)
+    if (bankAndAddress?.bank.fBank !== undefined) {
+      if (bankAndAddress.bank.fBank <= 12) {
+        return bankAndAddress.bank.fBank << 10 | (bankAndAddress.address - 0xC00)
+      } else if (bankAndAddress.bank.fBank >= 17) {
+        return (bankAndAddress.bank.fBank - 16) << 10 | (bankAndAddress.address - 0xC00)
+      }
+    }
+  }
+}
+
+class Block2Memory extends Memory {
+  /**
+   * Constructs a block 2 memory representation with the specified number of
+   * banks and nonexistent high memory range.
+   * EOL output on MEMORY TYPE & AVAILABILITY DISPLAY page shows banks above 043
+   * that are never used.
+   *
+   * @param numFixedBanks the number of fixed banks typically 027, 037, 043
+   * @param nonexistentHighMem special unaddressable high memory, if any
+   * @throws if fixedBanks is not in the range [027, 043]
+   */
+  constructor (numFixedBanks: number, nonexistentHighMem: Range | undefined) {
+    if (numFixedBanks < 23 || numFixedBanks > 43) {
+      throw new Error('fixedBanks out of range')
+    }
+
+    const ranges: MemoryRange[] = []
+    const fixedBanks: MemoryRange[] = []
+    const nonExistent: MemoryRange[] = []
+
+    for (let i = 0; i < BLOCK2_FIXED_BANK_04_INDEX; i++) {
+      ranges.push(BLOCK2_TRUE_ADDRESS_RANGES[i])
+    }
+
+    fixedBanks.push(BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_FIXED_BANKS_START_INDEX + 2])
+    fixedBanks.push(BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_FIXED_BANKS_START_INDEX + 3])
+    fixedBanks.push(BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_FIXED_BANKS_START_INDEX + 0])
+    fixedBanks.push(BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_FIXED_BANKS_START_INDEX + 1])
+    nonExistent.push(BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_NONEXISTENT_BANK_02_INDEX])
+
+    let i = 0
+    let fixedBanksRemaining = numFixedBanks - 3
+    while (fixedBanksRemaining > 0) {
+      const range = BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_FIXED_BANK_04_INDEX + i++]
+      ranges.push(range)
+      if (range.type === MemoryType.Nonexistent) {
+        nonExistent.push(range)
+      } else {
+        fixedBanks.push(range)
+        --fixedBanksRemaining
+      }
+    }
+
+    if (nonexistentHighMem !== undefined) {
+      // Add the nonexistent high memory
+      const range = { min: nonexistentHighMem?.min, max: nonexistentHighMem?.max, type: MemoryType.Nonexistent }
+      ranges.push(range)
+      nonExistent.push(range)
+    }
+
+    super(ranges, fixedBanks, 0, nonExistent)
+  }
+
+  fixedBankNumberToBank (bank: number): { fBank: number, sBank?: number } | undefined {
+    if (!this.isFixedBank(bank)) {
+      return undefined
+    }
+
+    if (bank < 24) {
+      return { fBank: bank }
+    } else if (bank < 32) {
+      return { fBank: bank, sBank: 3 }
+    } else {
+      const sBank = Math.floor(bank / 8)
+      return { fBank: bank, sBank }
+    }
+  }
+
+  protected asErasableBankAndAddress (trueAddress: number): { bank: Bank, address: number } {
+    const address = 0x300 + (trueAddress & 0xFF)
+    const eBank = (trueAddress & 0x700) >> 8
+    return { bank: { eBank }, address }
+  }
+
+  protected asFixedBankAndAddress (trueAddress: number): { bank: Bank, address: number } {
+    const fixed = trueAddress >= 0x1000 ? trueAddress - 0x1000 : trueAddress
+    const address = 0x400 + (fixed & 0x3FF)
+    let allSBank = ((fixed & 0xE000) >> 13)
+    if (allSBank < 3) {
+      allSBank = 3
+    }
+    const fBank = allSBank <= 3 ? (fixed & 0x7C00) >> 10 : 0x18 + ((fixed & 0x1C00) >> 10)
+    const sBank = trueAddress < BLOCK2_TRUE_ADDRESS_RANGES[BLOCK2_S3_START_INDEX].min ? undefined : allSBank
+    return { bank: { fBank, sBank }, address }
+  }
+
+  asFixedCompleteAddress (trueAddress: number): number | undefined {
+    const bankAndAddress = this.asBankAndAddress(trueAddress)
+    if (bankAndAddress === undefined || bankAndAddress.bank.fBank === undefined) {
+      return undefined
+    }
+
+    return bankAndAddress.bank.fBank << 10 | (bankAndAddress.address - 0x400)
+  }
+
+  /**
+   * Returns the interpretive fixed complete address, used for interpretive indexing.
+   * The true address must be in the same "half-memory" as the location counter.
+   * The returned value is the same as the fixed complete address for "low" half-memory, and similar for "high"
+   * half-memory but with the FBANK offset by -020.
+   * See Ref BTM, section 2.2.3.
+   * If the address is not in the same half-memory as the location counter, undefined is returned.
+   *
+   * @param locationCounter the location counter of the interpretive instruction
+   * @param trueAddress the true address referenced by the IAW
+   * @returns the interpretive fixed complete address
+   */
+  asInterpretiveFixedAddress (locationCounter: number, trueAddress: number): number | undefined {
+    const locationBank = this.asBankAndAddress(locationCounter)?.bank.fBank
+    const bankAndAddress = this.asBankAndAddress(trueAddress)
+    const addressBank = bankAndAddress?.bank.fBank
+    if (locationBank !== undefined && bankAndAddress !== undefined && addressBank !== undefined) {
+      const locationLow = this.isLowMemoryInterpretive(locationBank)
+      const addressLow = this.isLowMemoryInterpretive(addressBank)
+      if (addressLow === undefined || addressLow !== locationLow) {
+        return undefined
+      }
+
+      if (addressLow) {
+        return addressBank << 10 | (bankAndAddress.address - 0x400)
+      } else {
+        return (addressBank - 16) << 10 | (bankAndAddress.address - 0x400)
+      }
+    }
+  }
+
+  private isLowMemoryInterpretive (fBank: number): boolean | undefined {
+    if (fBank >= 4) {
+      if (fBank <= 15) {
+        return true
+      }
+      if (fBank >= 16 && fBank <= 35) {
+        return false
+      }
+    }
   }
 }

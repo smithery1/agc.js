@@ -9,7 +9,7 @@ import { Memory, MemoryType } from './memory'
 import { Operations } from './operations'
 import * as parse from './parser'
 import { Pass1SymbolTable, Pass2SymbolTable } from './symbol-table'
-import * as versions from './versions'
+import * as targets from './targets'
 
 /**
  * The output from pass 1 assembly.
@@ -301,16 +301,12 @@ export class Pass1Assembler {
       }
 
       bankNumber = card.address.value
-      if (bankNumber === 2 || bankNumber === 3) {
-        getCusses(assembled).add(cusses.Cuss3F)
-        return
-      }
 
       // The following differing YUL vs GAP behavior for BANK with an operand is empirical
       // but required to compile Sunburst120.
       // YUL 67: Behaves like BANK with no operand
       // Others: Leaves SBANK unchanged
-      if (this.options.version.version() === versions.Enum.Y1967) {
+      if (this.options.target.target() === targets.Enum.Y1967) {
         sBank = this.memory.fixedBankNumberToBank(bankNumber)?.sBank
       }
     }
@@ -428,11 +424,11 @@ export class Pass1Assembler {
       }
     } else {
       let offset = 0
-      if ((card.operation.operation === this.operations.EQ_MINUS
-        || card.operation.operation === this.operations.EQ_PLUS)
+      if ((card.operation.operation === this.operations.operation('=MINUS')
+        || card.operation.operation === this.operations.operation('=PLUS'))
         && this.validateLocationCounter(this.locationCounter, assembled)) {
         offset = this.locationCounter
-        if (card.operation.operation === this.operations.EQ_MINUS) {
+        if (card.operation.operation === this.operations.operation('=MINUS')) {
           offset = -offset
         }
       }

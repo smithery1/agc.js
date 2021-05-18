@@ -15,7 +15,7 @@ That said, I do not use the Virtual AGC's assembler or emulator code and have no
 
 ## Road Map
 
-The first step is to write an assembler that can translate the source code ([example][2]) into AGC binary code. This is not strictly necessary for an emulator, since the corresponding [binary code][3] is also available, but it's a good way to become familiar with the source code and to support custom programs and debugging in the future. Validation of this step is that the output binary code matches the original for all available source code. Since this does not provide any negative testing, further validation is given by a suite of test cases that covers both paradigms that are used in the original source and ones that are not.
+The first step is to write an [assembler][4] that can translate the source code ([example][2]) into AGC binary code. This is not strictly necessary for an emulator, since the corresponding [binary code][3] is also available, but it's a good way to become familiar with the source code and to support custom programs and debugging in the future. Validation of this step is that the output binary code matches the original for all available source code. Since this does not provide any negative testing, further validation is given by a suite of test cases that covers both paradigms that are used in the original source and ones that are not.
 
 The second step is to write the emulator without regard to external interfaces. Emulation via the pulse codes is an interesting option that would provide some insight into normally hidden areas of the logic units. Validation here is by running parts of the original software, original self-check code, a test suite of new custom self-check code, and potentially other means.
 
@@ -29,12 +29,13 @@ Subsequent steps can implement further external interfaces and tie them into the
 
 ## Current State
 
-Step one is in progress. The assembler "yul.js" produces correct binary output for all Luminary code bases and a sample Comanche code base. Visual inspection of varying degrees of exactness has shown the end of listing table data identical to that produced by GAP. Next up is to test against the mission software and write the test suite. See the [yul.js README][4] for more information on the assembler and how it works.
+Step one is in progress. The assembler "yul.js" produces correct binary output for all Luminary code bases, Retread, SuperJob, and a sample Comanche code base. Visual inspection of varying degrees of exactness has shown the end of listing table data identical to that produced by GAP. Next up is to further automate tests and run against the remaining code bases. See the [yul.js README][5] for more information on the assembler and how it works.
 
 [1]: https://virtualagc.github.io/virtualagc/index.html
 [2]: https://github.com/virtualagc/virtualagc/tree/master/Luminary099
 [3]: https://github.com/virtualagc/virtualagc/blob/master/Luminary099/Luminary099.binsource
-[4]: https://github.com/smithery1/agc.js/tree/main/src/yul.js/README.md
+[4]: https://github.com/smithery1/agc.js/tree/main/src/yul.js
+[5]: https://github.com/smithery1/agc.js/tree/main/src/yul.js/README.md
 
 ## Bibliography
 

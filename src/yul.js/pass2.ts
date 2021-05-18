@@ -1,5 +1,5 @@
 import * as field from './address-field'
-import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses } from './assembly'
+import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses, NEGATIVE_ZERO } from './assembly'
 import { Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
@@ -10,7 +10,7 @@ import { BasicAddressRange } from './operations'
 import * as parse from './parser'
 import { Pass1Output } from './pass1'
 import { Pass2SymbolTable } from './symbol-table'
-import * as versions from './versions'
+import * as targets from './targets'
 
 /**
  * The output from pass 2 assembly.
@@ -70,6 +70,7 @@ export class Pass2Assembler {
     CADR: this.onCadr.bind(this),
     ECADR: this.onECadr.bind(this),
     GENADR: this.onGenAdr.bind(this),
+    XCADR: this.onXCadr.bind(this),
     P: this.onP.bind(this),
     REMADR: this.onRemAdr.bind(this),
     DNCHAN: this.onDnchan.bind(this),
@@ -119,7 +120,7 @@ export class Pass2Assembler {
 
     this.output.cards.forEach((card) => {
       if (card.lexedLine.sourceLine.source !== prevSource) {
-        if (this.options.version.isYulNonBlk2()) {
+        if (!this.options.target.isRaytheon() && !this.options.target.isBlk2()) {
           this.eBank = 0
         }
         prevSource = card.lexedLine.sourceLine.source
@@ -141,7 +142,8 @@ export class Pass2Assembler {
       this.addCussCounts(card.cusses)
     })
 
-    if (this.options.version.version() === versions.Enum.B1966) {
+    if (this.options.target.target() === targets.Enum.B1966
+      || this.options.target.target() === targets.Enum.YAGC4) {
       this.addToBnkSums()
     }
     this.addBnkSums()
@@ -193,24 +195,21 @@ export class Pass2Assembler {
     }
 
     // Address bank needs to match location counter fixed bank or current erasable bank.
-    // No EBANK= or SBANK= statements in SuperJob though.
-    if (!this.options.version.isRaytheon()) {
-      if (bankAndAddress.bank.eBank !== undefined) {
-        if (check(bankAndAddress.bank.eBank !== this.eBank)) {
-          getCusses(assembled).add(
-            cusses.Cuss3A, 'Address=' + this.memory.asAssemblyString(trueAddress), 'EBANK=' + this.eBank.toString())
-        }
-      } else {
-        const locationAddress = this.memory.asSwitchedBankAndAddress(this.locationCounter)
-        if (locationAddress?.bank !== undefined
-          && check(locationAddress.bank.fBank !== bankAndAddress.bank.fBank
-            || locationAddress.bank.sBank !== bankAndAddress.bank.sBank)) {
-          getCusses(assembled).add(
-            cusses.Cuss3A,
-            'Bank mismatch',
-            'Address=' + this.memory.asAssemblyString(trueAddress),
-            'Location=' + this.memory.asAssemblyString(this.locationCounter))
-        }
+    if (bankAndAddress.bank.eBank !== undefined) {
+      if (check(bankAndAddress.bank.eBank !== this.eBank)) {
+        getCusses(assembled).add(
+          cusses.Cuss3A, 'Address=' + this.memory.asAssemblyString(trueAddress), 'EBANK=' + this.eBank.toString())
+      }
+    } else {
+      const locationAddress = this.memory.asSwitchedBankAndAddress(this.locationCounter)
+      if (locationAddress?.bank !== undefined
+        && check(locationAddress.bank.fBank !== bankAndAddress.bank.fBank
+          || locationAddress.bank.sBank !== bankAndAddress.bank.sBank)) {
+        getCusses(assembled).add(
+          cusses.Cuss3A,
+          'Bank mismatch',
+          'Address=' + this.memory.asAssemblyString(trueAddress),
+          'Location=' + this.memory.asAssemblyString(this.locationCounter))
       }
     }
 
@@ -269,7 +268,7 @@ export class Pass2Assembler {
     }
     const address = resolved.address + (operation.addressBias ?? 0)
 
-    if (this.options.version.isRaytheon()) {
+    if (this.options.target.isRaytheon()) {
       // SuperJob seems to treat numeric subfields, including those defined by =, as an address literal,
       // so just return it.
       if (typeof card.address?.value === 'number') {
@@ -279,7 +278,7 @@ export class Pass2Assembler {
         const entry = this.output.symbolTable.entry(card.address.value)
         if (entry?.definition.card !== undefined) {
           const card = entry.definition.card
-          if (parse.isClerical(card) && card.operation.operation === this.operations.EQUALS) {
+          if (parse.isClerical(card) && card.operation.operation === this.operations.operation('EQUALS')) {
             return { address, offset: resolved.offset }
           }
         }
@@ -345,17 +344,21 @@ export class Pass2Assembler {
       let lowOp: number
       let highOp: number
       if (card.lhs === undefined) {
-        lowOp = opCode(card.rhs as parse.OperationField<ops.Interpretive>)
-        highOp = 0
+        lowOp = opCode(card.rhs as parse.OperationField<ops.Interpretive>, this.options)
+        highOp = this.options.target.isBlock1() ? 1 : 0
       } else {
-        lowOp = opCode(card.lhs)
-        highOp = opCode(card.rhs as parse.OperationField<ops.Interpretive>)
+        lowOp = opCode(card.lhs, this.options)
+        if (parse.isOperationField(card.rhs)) {
+          highOp = opCode(card.rhs, this.options)
+        } else {
+          highOp = (card.rhs as field.AddressField).value as number + 1
+        }
       }
-      const raw = highOp << 7 | lowOp
+      const raw = this.options.target.isBlock1() ? ((lowOp - 1) << 7) | highOp : highOp << 7 | lowOp
       this.setCell(raw, 0, true, assembled)
     }
 
-    function opCode (field: parse.OperationField<ops.Interpretive> | undefined): number {
+    function opCode (field: parse.OperationField<ops.Interpretive> | undefined, options: Options): number {
       // Verified by parser
       if (field?.operation.opCode === undefined) {
         return ERROR_WORD
@@ -363,7 +366,15 @@ export class Pass2Assembler {
 
       let code = field.operation.opCode + 1
       if (field.indexed) {
-        code += 2
+        if (options.target.isBlock1()) {
+          if (field.operation.operand2 === undefined && field.operation.operand1?.pushDown === true) {
+            code += 4
+          } else {
+            code += 2
+          }
+        } else {
+          code += 2
+        }
       }
       return code
     }
@@ -383,10 +394,21 @@ export class Pass2Assembler {
 
     let raw: number
     // Ref BTM p2-10. BLK2 uses a 4 bit op-code and a 10 bit address.
-    if (this.options.version.isBlk2()) {
+    if (this.options.target.isBlk2()) {
       const ts = (lhs.operation.code ?? 0) << 10
       const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
       raw = ts | (bankAndAddress?.address ?? ERROR_WORD)
+    // Block1 behaves like the as BLK2 for non-indexed STORE.
+    // An index store is similar to other indexed IAWs - the address is shifted and the index added to it.
+    } else if (this.options.target.isBlock1()) {
+      const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
+      let ts = (lhs.operation.code ?? 0) << 10
+      let addressPart = bankAndAddress?.address ?? ERROR_WORD
+      if (rhs.indexRegister !== undefined) {
+        ts <<= 1
+        addressPart = (addressPart << 1) + rhs.indexRegister - 1
+      }
+      raw = ts | addressPart
     } else {
       const ts = (lhs.operation.code ?? 0) << 11
       raw = ts | address
@@ -402,11 +424,14 @@ export class Pass2Assembler {
 
     const symbol = card.operation.operation.symbol
     if (symbol in this.addressDispatch) {
-      const resolved = this.resolve(card.address, assembled)
-      if (resolved === undefined) {
-        return
+      if (this.options.target.isBlock1() && symbol === 'P' && card.address?.value === '-') {
+        this.setCell(0, 0, true, assembled)
+      } else {
+        const resolved = this.resolve(card.address, assembled)
+        if (resolved !== undefined) {
+          this.addressDispatch[symbol](card, resolved, assembled)
+        }
       }
-      this.addressDispatch[symbol](card, resolved, assembled)
     }
 
     this.updateBanks()
@@ -441,13 +466,26 @@ export class Pass2Assembler {
   }
 
   private onCadr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
+    if (this.options.target.isBlock1()) {
+      if (this.memory.isErasable(this.memory.memoryType(resolved.address))) {
+        this.setCell(resolved.address, resolved.offset, card.operation.complemented, assembled)
+        return
+      }
+    }
     const fixed = this.memory.asFixedCompleteAddress(resolved.address)
     if (fixed === undefined) {
-      getCusses(assembled).add(cusses.Cuss37, 'Not in fixed memory', 'Address=' + this.memory.asAssemblyString(fixed))
+      getCusses(assembled).add(cusses.Cuss37, 'Not in fixed memory', 'Address=' + this.memory.asAssemblyString(resolved.address))
       return
     }
 
     this.setCell(fixed, resolved.offset, card.operation.complemented, assembled)
+  }
+
+  private onXCadr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
+    // XCADR is only a Block1 instruction
+    const offset = this.memory.isErasable(this.memory.memoryType(resolved.address)) ? 0x4FFF : 0x43FF
+    const address = resolved.address + offset
+    this.setCell(address, resolved.offset, card.operation.complemented, assembled)
   }
 
   private onECadr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
@@ -482,7 +520,7 @@ export class Pass2Assembler {
       // Ref SYM, VC-2, which referes to BBCON but 2CADR is just a BBCON and a GENADR.
       // A preceding one-shot EBANK= is present in all code bases after Aurora.
       if (ebank === undefined) {
-        if (this.options.version.isBlk2()) {
+        if (this.options.target.isBlk2()) {
           ebank = this.eBank
         } else {
           getCusses(assembled).add(cusses.Cuss58)
@@ -521,7 +559,7 @@ export class Pass2Assembler {
     let ebank = this.oneShotEBank
     // Ref SYM, VC-2 implies a preceding one-shot EBANK= is required, and it is present in all code bases after Aurora.
     if (ebank === undefined) {
-      if (this.options.version.isBlk2()) {
+      if (this.options.target.isBlk2()) {
         ebank = this.eBank
       } else {
         getCusses(assembled).add(cusses.Cuss58)
@@ -555,7 +593,7 @@ export class Pass2Assembler {
 
   private onP (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
     // Ref YUL, 13-137
-    if (card.interpretive !== undefined) {
+    if (card.interpretive?.operand !== undefined) {
       if (card.interpretive.operand.type === ops.InterpretiveOperandType.Constant) {
         const operationType = card.interpretive.operator.operation.subType
         if (operationType === ops.InterpretiveType.Logical) {
@@ -610,7 +648,7 @@ export class Pass2Assembler {
     // CC: code from interpretive op, which is (RD: rounded, direction)
     // I: 0 for negative shift, 1 for non-negative shift
     // SSSSSSS: amount of shift
-    const prefix = this.options.version.isBlk2() ? 0 : 0x2000
+    const prefix = this.options.target.isBlk2() ? 0 : 0x2000
     const code = interpretive?.operator.operation.code ?? 0
     const word = prefix | (code << 8) | (shiftAmount + 129)
     this.setCell(word, 0, card.address?.indexRegister === 2, assembled)
@@ -623,22 +661,35 @@ export class Pass2Assembler {
     let word: number
     let complement = false
     const isErasable = this.memory.isErasable(this.memory.memoryType(address))
+    const isBlock1 = this.options.target.isBlock1()
 
-    if (interpretive?.operand.type === ops.InterpretiveOperandType.Address) {
+    if (interpretive?.operand?.type === ops.InterpretiveOperandType.Address) {
       if (isErasable) {
         word = this.translateInterpretiveErasable(interpretive.operand, address, assembled)
       } else {
         word = this.translateInterpretiveFixed(interpretive.operand, address, assembled)
       }
-      if (interpretive?.operand.indexable) {
+      if (isBlock1) {
+        complement = card.operation.complemented
+        if (complement) {
+          --word
+        } else {
+          ++word
+        }
+      } else if (interpretive?.operand.indexable) {
         ++word
       }
-      if (card.address?.indexRegister === 2) {
-        complement = true
+      if (card.address?.indexRegister !== undefined) {
+        if (isBlock1) {
+          word = (word - 1) << 1
+          word += card.address.indexRegister
+        } else if (card.address.indexRegister === 2) {
+          complement = true
+        }
       }
     } else {
       // Ref SYM, VB-4
-      if (this.options.version.isBlk2() && isErasable) {
+      if (this.options.target.isBlk2() && isErasable) {
         const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
         word = bankAndAddress?.address ?? ERROR_WORD
       } else {
@@ -666,7 +717,7 @@ export class Pass2Assembler {
     // However, there are plenty of stores in low memory and references to other banks without
     // an EBANK= update.
 
-    if (this.options.version.isBlk2()) {
+    if (this.options.target.isBlk2()) {
       const bankAndAddress = this.memory.asSwitchedBankAndAddress(trueAddress)
       return bankAndAddress?.address ?? ERROR_WORD
     }
@@ -677,7 +728,7 @@ export class Pass2Assembler {
     operand: ops.InterpretiveOperand, trueAddress: number, assembled: AssembledCard): number {
     if (!operand.fixedMemory) {
       getCusses(assembled).add(cusses.Cuss37, 'Fixed not allowed')
-    } else if (operand.indexable) {
+    } else if (operand.indexable || this.options.target.isBlock1()) {
       const fixedAddress = this.memory.asInterpretiveFixedAddress(this.locationCounter, trueAddress)
       if (fixedAddress === undefined) {
         getCusses(assembled).add(
@@ -691,7 +742,7 @@ export class Pass2Assembler {
     } else {
       const fixedAddress = this.memory.asFixedCompleteAddress(trueAddress)
       if (fixedAddress === undefined) {
-        getCusses(assembled).add(cusses.Cuss37, 'Not in fixed bank', this.memory.asAssemblyString(trueAddress))
+        getCusses(assembled).add(cusses.Cuss37, 'Not in fixed memory', this.memory.asAssemblyString(trueAddress))
       } else {
         return fixedAddress
       }
@@ -849,7 +900,7 @@ export class Pass2Assembler {
     // constant card.
     const tcCard: parse.AddressConstantCard = {
       type: parse.CardType.Address,
-      operation: { operation: this.operations.GENADR, indexed: false, complemented: false }
+      operation: { operation: this.operations.checksumTcConstant(), indexed: false, complemented: false }
     }
     const tcAssembled: AssembledCard = {
       lexedLine: assembled.lexedLine,
@@ -876,8 +927,11 @@ export class Pass2Assembler {
   }
 
   private addToBnkSums (): void {
-    // Aurora 12 manually adds the end-of-bank TC instructions but doesn't use BNKSUM.
+    // Aurora 12 and Solarium055 manually add the end-of-bank TC instructions but don't use BNKSUM.
     // The checksums are present in the octal table, however.
+    // Solarium055 puts some data *after* the checksum in bank 2 (ugh), so we need to scan backwards for the TC
+    // instructions instead of just unassigned space.
+
     const sourceLine: SourceLine = {
       source: 'NONE',
       lineNumber: 0,
@@ -897,18 +951,27 @@ export class Pass2Assembler {
       sBank: 0
     }
 
-    for (let bank = 0; bank < this.memory.numFixedBanks(); bank++) {
+    const firstFixedBank = this.memory.firstFixedBankNumber()
+    for (let bank = firstFixedBank; bank < this.memory.numFixedBanks() + firstFixedBank; bank++) {
       const range = this.memory.fixedBankRange(bank)
       if (range !== undefined) {
         let address = this.output.cells.findLastUsed(range)
-        if (address !== undefined) {
-          const remaining = range.max - address - 1
-          if (remaining < 0) {
-            getCusses(assembled).add(cusses.Cuss4F, 'Last word will be overwritten with checksum')
+        let max = range.max
+        while (address !== undefined) {
+          const sAddress = this.memory.asSwitchedBankAndAddress(address)?.address ?? 0
+          if (this.output.cells.value(address) === sAddress && this.output.cells.value(address - 1) === sAddress - 1) {
+            const remaining = max - address - 1
+            if (remaining < 0) {
+              getCusses(assembled).add(cusses.Cuss4F, 'Last word will be overwritten with checksum')
+            } else {
+              ++address
+            }
+            this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: address })
+            break
           } else {
-            ++address
+            max = address - 1
+            address = this.output.cells.findLastUsed({ min: range.min, max })
           }
-          this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: address })
         }
       }
     }
@@ -941,11 +1004,11 @@ export class Pass2Assembler {
       // Meaning the checksum has the same sign as the sum, including -0 if necessary.
       // This works most of the time, but old code (Sunburst37 (aka YUL 1966) and older) appears to always use a
       // positive bank number.
-      if (sum < 0 && this.options.version.isLaterThan(versions.Enum.Y1966)) {
+      if (sum < 0 && (this.options.target.isLaterThan(targets.Enum.Y1966) || this.options.target.isBlock1())) {
         checksum = -bnkSum.bank - sum
         if (checksum === 0) {
           // Special case for -0
-          checksum ^= COMPLEMENT_MASK
+          checksum = NEGATIVE_ZERO
         }
       } else {
         checksum = bnkSum.bank - sum

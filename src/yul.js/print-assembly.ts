@@ -9,8 +9,8 @@ import * as parse from './parser'
 import { Pass2Output } from './pass2'
 import { LINE_LENGTH, PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
+import * as targets from './targets'
 import { parity } from './util'
-import * as versions from './versions'
 
 const COLUMNS = {
   LineNumber: 4,
@@ -171,7 +171,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
         return ''
       }
 
-      if (parse.isClerical(card.card) && card.card.operation.operation === operations.COUNT) {
+      if (parse.isClerical(card.card) && card.card.operation.operation === operations.operation('COUNT')) {
         symbol = expandCountSymbol(memory, card.refAddress ?? 0, card.card, symbol)
       }
 
@@ -202,7 +202,7 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
       const address = addressString(card.refAddress)
       const word = wordString(card, undefined)
       printLine(type, card, address, word, ' ', field1, field2, field3, remark)
-    } else if (parse.isClerical(card.card) && card.card.operation.operation === operations.ERASE) {
+    } else if (parse.isClerical(card.card) && card.card.operation.operation === operations.operation('ERASE')) {
       printEraseCell(card, card.refAddress, field1, field2, field3, remark)
     } else {
       printCell(cells, card, card.refAddress, field1, field2, field3, remark)
@@ -359,7 +359,7 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
   map.set(currentCount.name, currentCount)
   pass2.cards.forEach(card => {
     const page = card.lexedLine.sourceLine.page
-    if (parse.isClerical(card.card) && card.card.operation.operation === context.operations.COUNT) {
+    if (parse.isClerical(card.card) && card.card.operation.operation === context.operations.operation('COUNT')) {
       currentCount.lastPageEnd = page
       // Field required and verified in parser
       const symbol = expandCountSymbol(context.memory, card.refAddress ?? 0, card.card, card.lexedLine.field3 ?? '')
@@ -381,7 +381,8 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
         currentCount.lastCount += card.extent
         currentCount.totalCount += card.extent
         currentCount.cumCount += card.extent
-      } else if (parse.isClerical(card.card) && card.card.operation.operation === context.operations.EQ_ECADR) {
+      } else if (parse.isClerical(card.card)
+        && card.card.operation.operation === context.operations.operation('=ECADR')) {
         // Don't understand the =ECADR instruction yet, which is apparently a late addition to GAP.
         // This is empirically correct per Luminary210 count data table, but we don't allocate any fixed memory for it
         // and we still match on assembled binary data.
@@ -426,7 +427,7 @@ export function printResults (pass2: Pass2Output, context: PrintContext): void {
   let result: string
   let manufacturable = ''
 
-  if (context.options.version.isLaterThan(versions.Enum.B1965)) {
+  if (context.options.target.isLaterThan(targets.Enum.B1965)) {
     context.printer.endPage()
   } else if (context.options.formatted) {
     context.printer.printTrailingSeparator()

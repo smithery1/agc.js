@@ -50,7 +50,7 @@ export function printTable<Entry> (
         options.formatted
         // See Aurora12 p648/649 for an example of YUL not printing a separator as the first entry in a page.
         // See Luminary099 p1563 for an example of GAP doing printing one.
-        && (!options.version.isYul() || currentCol > 0 || currentRow > 0)
+        && (!options.target.isYul() || currentCol > 0 || currentRow > 0)
         && lastEntry !== undefined
         && tableData.separator(context, entry, lastEntry)) {
         output[currentRow][currentCol] = separator

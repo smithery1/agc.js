@@ -7,7 +7,7 @@ import { Pass2Output } from './pass2'
 import { PrintContext } from './printer-utils'
 import { SymbolEntry } from './symbol-table'
 import { printTable, TableData } from './table-printer'
-import * as versions from './versions'
+import * as targets from './targets'
 
 function cacheSortedTable (pass2: Pass2Output, context: PrintContext): Array<[string, SymbolEntry]> {
   const table = pass2.symbolTable.getTable()
@@ -24,10 +24,10 @@ function cacheSortedTable (pass2: Pass2Output, context: PrintContext): Array<[st
 
 export function printSymbols (pass2: Pass2Output, context: PrintContext): void {
   const sorted = cacheSortedTable(pass2, context)
-  if (context.options.version.isAtMost(versions.Enum.B1965)) {
+  if (context.options.target.isAtMost(targets.Enum.B1965)) {
     printB1965Symbols(context, sorted.values())
   } else {
-    const tableData = context.options.version.isYul() ? ALL_YUL_TABLE_DATA : ALL_GAP_TABLE_DATA
+    const tableData = context.options.target.isYul() ? ALL_YUL_TABLE_DATA : ALL_GAP_TABLE_DATA
     printTable(context, tableData, sorted.values())
   }
 }
@@ -44,10 +44,10 @@ export function printUnreferencedSymbols (pass2: Pass2Output, context: PrintCont
 export function printCrossReference (pass2: Pass2Output, context: PrintContext): void {
   const table = pass2.symbolTable.getTable()
   const sorted = [...table.entries()].sort(valueSort)
-  const version = context.options.version.version()
-  const def = version === versions.Enum.Y1966
+  const version = context.options.target.target()
+  const def = version === targets.Enum.Y1966
     ? XREF_YUL_66_TABLE_DATA
-    : (version === versions.Enum.Y1967 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
+    : (version === targets.Enum.Y1967 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
   printTable(context, def, sorted.values())
 
   function valueSort (e1: [string, SymbolEntry], e2: [string, SymbolEntry]): number {
@@ -59,7 +59,7 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
       // It's *almost* but not quite by symbol.
       // See Sunburst37 scans page 1079.
       // Something to look into in more detail at some point.
-      if (!context.options.version.isYul()) {
+      if (!context.options.target.isYul()) {
         const page1 = e1[1].definition.lexedLine.sourceLine.page
         const page2 = e2[1].definition.lexedLine.sourceLine.page
 
@@ -81,13 +81,13 @@ export function printTableSummary (pass2: Pass2Output, context: PrintContext): v
 
 function isEqualsCard (operations: ops.Operations, card: any): boolean {
   return parse.isClerical(card)
-    && (card.operation.operation === operations.EQUALS
-      || card.operation.operation === operations.EQ_MINUS
-      || card.operation.operation === operations.EQ_PLUS)
+    && (card.operation.operation === operations.operation('EQUALS')
+      || card.operation.operation === operations.operation('=MINUS')
+      || card.operation.operation === operations.operation('=PLUS'))
 }
 
 function isEraseCard (operations: ops.Operations, card: any): boolean {
-  return parse.isClerical(card) && card.operation.operation === operations.ERASE
+  return parse.isClerical(card) && card.operation.operation === operations.operation('ERASE')
 }
 
 function healthString (operations: ops.Operations, entry: SymbolEntry): string {
@@ -366,7 +366,7 @@ function printSummary (context: PrintContext, table: Map<string, SymbolEntry>, o
   const printer = context.printer
   const total = normal + equals
   let unrefString = ''
-  const isB1965 = context.options.version.isAtMost(versions.Enum.B1965)
+  const isB1965 = context.options.target.isAtMost(targets.Enum.B1965)
   if (isB1965) {
     equals -= unreferenced
     unrefString = unreferenced.toString()
@@ -380,7 +380,7 @@ function printSummary (context: PrintContext, table: Map<string, SymbolEntry>, o
   unrefString = unrefString.padStart(14)
   const totalString = total.toString().padStart(7)
   printer.endPage()
-  if (options.version.isYul()) {
+  if (options.target.isYul()) {
     if (options.formatted) {
       if (isB1965) {
         printer.println('SUMMARY OF SYMBOL TABLE ANALYSIS')

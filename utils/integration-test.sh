@@ -48,7 +48,7 @@
 #
 # Each test has the form <code base>[:<yul.js args>[:<yaYUL args>[:<lines>]]].
 # * code base: The name of the virtualagc directory with the AGC code.
-# * yul.js args: Required for early code bases. E.g. "-y 67".
+# * yul.js args: Required for early code bases. E.g. "-t Raytheon".
 # * yaYUL args: Required for early code bases. E.g. "--early-sbank".
 # lines: Number of significant lines of dump.py output to check. Set to 4096
 #        for early code bases to ignore empty superbank 4.
@@ -56,7 +56,7 @@
 # The tests must be declared in the config file as a quoted newline-separated
 # list. Blank lines and leading and trailing whitespace is ignored. Example:
 # TESTS="
-#    Sunburst37:-y 66:--early-sbank --pos-checksums:4096
+#    Sunburst37:-y Y1966:--early-sbank --pos-checksums:4096
 #    Luminary099
 # "
 #
@@ -121,9 +121,9 @@ function assemblyTask
     local ARGS="$6"
     local OUT="$7"
 
-    local ARGS_DESC="$3"
-    [[ -n "$ARGS_DESC" ]] && ARGS_DESC=" with args $ARGS"
-    local DESC="$ASSEMBLER assembing $DIR$ARGS_DESC..."
+    local ARGS_DESC=
+    [[ -n "$ARGS" ]] && ARGS_DESC=" with args $ARGS"
+    local DESC="$ASSEMBLER assembing $DIR$ARGS_DESC"
     runTask "$NUMBER" "$TOTAL" "$DESC" "$FUNC" "$DIR" "$ARGS" "$OUT"
 }
 
@@ -354,6 +354,37 @@ function testCodeBase
     return 0
 }
 
+function lookupCodeline
+{
+    local CODE=$(echo $1 | sed -e 's@^ *@@' -e 's@ *$@@')
+    if [[ "$CODE" == *:* ]]
+    then
+        echo $CODE
+        return 0
+    fi
+
+    local CODELINE
+    local TEST
+
+    IFS=$NL_IFS
+    for CODELINE in $TESTS
+    do
+        IFS=:
+        set $CODELINE
+        IFS=$ORIG_IFS
+        TEST=$(echo $1)
+        if [[ $TEST == "$CODE" ]]
+        then
+            echo $CODELINE
+            return 0
+        fi
+    done
+
+    IFS=$ORIG_IFS
+    echo $CODE
+    return 1
+}
+
 function runTests
 {
     local CODELINE
@@ -363,7 +394,7 @@ function runTests
 
     for CODELINE in "$@"
     do
-        CODELINE=$(echo $CODELINE | sed -e 's@^ *@@' -e 's@ *$@@')
+        CODELINE=$(lookupCodeline "$CODELINE")
         IFS=:
         set $CODELINE
         IFS=$ORIG_IFS

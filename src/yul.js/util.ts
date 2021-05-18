@@ -22,7 +22,7 @@ export function isWholeOctal (str: string): boolean {
   return OCTAL_EXPR.test(str)
 }
 
-const SIGNED_EXPR = /^[+-]\d+D?$/
+const SIGNED_EXPR = /^[+-]\s*\d+D?$/
 /**
  * Returns true iff the specified string is a signed numeric value.
  *

@@ -8,6 +8,11 @@ import { AssemblyCard, RemarkCard } from './parser'
 export const COMPLEMENT_MASK = 0x7FFF
 
 /**
+ * One's complement negative zero
+ */
+export const NEGATIVE_ZERO = COMPLEMENT_MASK
+
+/**
  * A quantity used as a placeholder when an error prevents determining a correct value.
  */
 export const ERROR_WORD = 0

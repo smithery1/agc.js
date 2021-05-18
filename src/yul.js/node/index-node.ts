@@ -1,7 +1,7 @@
 import { argv } from 'process'
 import '../../common/node/compat-node'
 import * as boot from '../bootstrap'
-import * as versions from '../versions'
+import * as targets from '../targets'
 
 const options = parseOptions(argv)
 if (options !== undefined) {
@@ -12,7 +12,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
   const app = argv.slice(0, 2).join(' ')
   const options: boot.Options = {
     file: '',
-    version: versions.createVersion(versions.Enum.GAP),
+    target: targets.createTarget(targets.Enum.GAP),
     eol: [],
     formatted: true
   }
@@ -38,9 +38,9 @@ function parseOptions (argv: string[]): boot.Options | undefined {
         options.formatted = false
         break
 
-      case '-y':
-      case '--yul':
-        if (!parseYul()) {
+      case '-t':
+      case '--target':
+        if (!parseTarget()) {
           return undefined
         }
         break
@@ -98,7 +98,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
 
     function addSection (val: string, isStderr: boolean): boolean {
       if (val === 'All') {
-        if (options.version.isGap() || options.version.isRaytheon()) {
+        if (options.target.isGap() || options.target.isRaytheon()) {
           add(boot.EolSection.ListingWithCusses)
           add(boot.EolSection.Symbols)
           add(boot.EolSection.UndefinedSymbols)
@@ -111,11 +111,10 @@ function parseOptions (argv: string[]): boot.Options | undefined {
           add(boot.EolSection.OctalListing)
           add(boot.EolSection.Occupied)
           add(boot.EolSection.Results)
-        } else if (options.version.isYulNonBlk2()) {
+        } else if (options.target.isBlk2()) {
           add(boot.EolSection.ListingWithCusses)
           add(boot.EolSection.Symbols)
           add(boot.EolSection.TableSummary)
-          add(boot.EolSection.CrossReference)
           add(boot.EolSection.MemorySummary)
           add(boot.EolSection.Occupied)
           add(boot.EolSection.Paragraphs)
@@ -125,6 +124,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
           add(boot.EolSection.ListingWithCusses)
           add(boot.EolSection.Symbols)
           add(boot.EolSection.TableSummary)
+          add(boot.EolSection.CrossReference)
           add(boot.EolSection.MemorySummary)
           add(boot.EolSection.Occupied)
           add(boot.EolSection.Paragraphs)
@@ -147,7 +147,7 @@ function parseOptions (argv: string[]): boot.Options | undefined {
 
     function removeSection (val: string): boolean {
       if (val === 'All') {
-        if (options.version.isYul()) {
+        if (options.target.isYul()) {
           remove(boot.EolSection.ListingWithCusses)
           remove(boot.EolSection.Symbols)
           remove(boot.EolSection.UndefinedSymbols)
@@ -191,19 +191,19 @@ function parseOptions (argv: string[]): boot.Options | undefined {
     }
   }
 
-  function parseYul (): boolean {
+  function parseTarget (): boolean {
     if (i === argv.length) {
-      console.error('Missing yul argument')
+      console.error('Missing target argument')
       return false
     }
 
     const str = argv[i++]
-    const version = versions.parseVersion(str)
-    if (version === undefined) {
-      console.error('Invalid version argument')
+    const target = targets.parseTarget(str)
+    if (target === undefined) {
+      console.error('Invalid target argument')
       return false
     }
-    options.version = version
+    options.target = target
     return true
   }
 }
@@ -226,16 +226,15 @@ function usage (app: string): void {
       OctalListing, OctalCompact, Occupied, Results
   [-h|--help]
     This help text
-  [-u|--unformatted]
-    Outputs unformatted data: no page breaks or headers and a single
-    set of columns per end-of-listing table
-  [-y|--yul <version>]
-    Assembles and outputs using YUL rules for the specific YUL version.
-    Versions are:
+  [-t|--target <target>]
+    Assembles for the specified YUL version and machine type.
+    Targets are:
       RAY Raytheon assembler, suitable for SuperJob
-        No checksums, EBANK, or SBANK; special SETLOC form
+        No checksums, EBANK=, or SBANK=; special SETLOC form
         Numeric subfields treated as current-bank addresses
         GAP EOL output
+      YAGC4 YUL assembly for a Block 1 target, suitable for Solarium055
+        Substantially simpler instruction set and memory model than Block 2
       B1965 Early BLK2, suitable for Retread
         No checksums
         EOL output differences vs B1966
@@ -252,5 +251,8 @@ function usage (app: string): void {
         EOL output differences vs GAP
       GAP Suitable for all other versions
         This is the default
-  `)
+  [-u|--unformatted]
+    Outputs unformatted data: no page breaks or headers and a single
+    set of columns per end-of-listing table
+      `)
 }

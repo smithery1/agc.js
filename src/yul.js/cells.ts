@@ -166,6 +166,11 @@ export class Cells {
   }
 
   private cussConflict (existing: AssembledCard, update: AssembledCard): void {
+    getCusses(existing).add(
+      cusses.Cuss26,
+      'Subsequently assigned here:', sourceString(update),
+      update.lexedLine.sourceLine.line
+    )
     getCusses(update).add(
       cusses.Cuss26,
       'Previously assigned here:', sourceString(existing),

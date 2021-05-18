@@ -209,7 +209,31 @@ function IO (
  * @returns the Operations instance
  */
 export function createOperations (options: Options): Operations {
-  return options.version.isBlk2() ? new Blk2Operations() : new AgcOperations()
+  if (options.target.isBlock1()) {
+    return new Block1Operations()
+  }
+  return options.target.isBlk2() ? new Blk2Operations() : new AgcOperations()
+}
+
+// Ref SYM, VIB-50 prefix 2, selection code 34
+const INTERPRETIVE_OPCODE_LOGICAL = 114
+// Ref SYM, VIB-26 prefix 1, selection code 23
+const INTERPRETIVE_OPCODE_SHIFT = 77
+// Ref SUNRISE, RTB ROUTINES, page 99-100
+// These are the routines that manipulate the accumulator.
+// SIGNMPAC isn't documented there but belongs in this list.
+const RTB_IMPLICIT_LOAD_ROUTINES: string[] = [
+  'LOADTIME',
+  'CDULOGIC',
+  '1STO2S',
+  'READPIPS',
+  'SGNAGREE',
+  'SIGNMPAC',
+  'TRUNLOG'
+]
+
+export function isBlock1RtbLoad (routine: string): boolean {
+  return RTB_IMPLICIT_LOAD_ROUTINES.includes(routine)
 }
 
 /**
@@ -220,7 +244,40 @@ export function createOperations (options: Options): Operations {
  * Provides lookup of an operation from its symbol and access to most operations by name at compile time.
  */
 export abstract class Operations {
-  readonly ops = new Map<string, BaseOperation>()
+  private readonly ops = new Map<string, BaseOperation>()
+
+  readonly BNKSUM: Clerical
+  readonly NOOP_FIXED: Basic
+  readonly NOOP_ERASABLE: Basic
+
+  constructor () {
+    //
+    // Clerical
+    //
+    // Note erase can be 0 or 1 words, depending on the address field.
+    // This is handled in the assembler, but the parser needs it to be non-zero to perform other checks.
+    this.addClerical('ERASE', 1, Necessity.Optional, Necessity.Optional, Necessity.Never, Necessity.Never)
+    this.addClerical('BANK', 0, Necessity.Never, Necessity.Optional, Necessity.Never, Necessity.Never)
+    this.BNKSUM = this.addClerical('BNKSUM', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('EQUALS', 0, Necessity.Optional, Necessity.Optional, Necessity.Never, Necessity.Never)
+    this.alias('EQUALS', '=')
+    this.addClerical('SETLOC', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.alias('SETLOC', 'LOC')
+    this.addClerical('SUBRO', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+
+    //
+    // Numeric
+    //
+    this.addNumeric('2DEC', 2)
+    this.addNumeric('2OCT', 2)
+    this.alias('2OCT', '2OCTAL')
+    this.addNumeric('DEC', 1)
+    this.addNumeric('OCT', 1)
+    this.alias('OCT', 'OCTAL')
+    this.addNumeric('MM', 1)
+    this.addNumeric('VN', 1)
+    this.alias('VN', 'NV')
+  }
 
   /**
    * Returns the operation for the specified symbol.
@@ -234,15 +291,22 @@ export abstract class Operations {
   }
 
   /**
+   * Returns the address constant operation for TC operations that preceded the checksum value.
+   * YUL/GAP output these as constants in the octal listing, so we assemble them as if they came from an address
+   * constant card instead of from an instruction card.
+   *
+   * @returns the address constant operation for TC operations that preceded the checksum value
+   */
+  abstract checksumTcConstant (): AddressConstant
+
+  /**
    * Returns the extended form of the INDEX operation if op is INDEX and extended is true, otherwise returns op.
    *
    * @param op the operation to check
    * @param extended whether preceded by an EXTEND instruction
    * @returns the extended form of the INDEX operation if op is INDEX and extended is true, otherwise returns op
    */
-  checkExtendedIndex (op: Operation, extended: boolean): Operation {
-    return extended && op === this.INDEX ? this.EXTENDED_INDEX : op
-  }
+  abstract checkExtendedIndex (op: Operation, extended: boolean): Operation
 
   /**
    * Returns true iff the op is the basic or extended variant of INDEX.
@@ -250,9 +314,15 @@ export abstract class Operations {
    * @param op the operation to check
    * @returns true iff the op is the basic or extended variant of INDEX
    */
-  isIndex (op: Operation): boolean {
-    return op === this.INDEX || op === this.EXTENDED_INDEX
-  }
+  abstract isIndex (op: Operation): boolean
+
+  /**
+   * Returns true iff the op is EXTEND or the extended variant of INDEX.
+   *
+   * @param op the operation to check
+   * @returns true iff the op is EXTEND or the extended variant of INDEX
+   */
+  abstract isExtend (op: Operation): boolean
 
   /**
    * Returns the indexed form of the specified store instruction if op is a store instruction and indexed is true.
@@ -284,7 +354,7 @@ export abstract class Operations {
    */
   abstract storeFirstWordIndexed (op: Interpretive, index: number): Interpretive
 
-  private add<Type extends BaseOperation> (symbol: string, op: Type): Type {
+  protected add<Type extends BaseOperation> (symbol: string, op: Type): Type {
     if (this.ops.has(symbol)) {
       throw new Error('duplicate symbol: ' + symbol)
     }
@@ -304,51 +374,51 @@ export abstract class Operations {
     return this.add(symbol, op)
   }
 
-  private addBasicQc (symbol: string, opCode: number, qc: number, addressBias?: number): Basic {
+  protected addBasicQc (symbol: string, opCode: number, qc: number, addressBias?: number): Basic {
     return this.addBasicExtended(false, symbol, opCode, qc, BasicAddressRange.ErasableMemory, addressBias)
   }
 
-  private addBasic (symbol: string, opCode: number, addressRange: BasicAddressRange, addressBias?: number): Basic {
+  protected addBasic (symbol: string, opCode: number, addressRange: BasicAddressRange, addressBias?: number): Basic {
     return this.addBasicExtended(false, symbol, opCode, undefined, addressRange, addressBias)
   }
 
-  private addBasicSpecial (symbol: string, opCode: number, specialAddress: number): Basic {
+  protected addBasicSpecial (symbol: string, opCode: number, specialAddress: number): Basic {
     const op = {
       type: Type.Basic, symbol, isExtended: false, opCode, specialAddress, addressField: Necessity.Never, words: 1
     }
     return this.add(symbol, op)
   }
 
-  private addBasicQcSpecial (symbol: string, opCode: number, qc: number, specialAddress: number): Basic {
+  protected addBasicQcSpecial (symbol: string, opCode: number, qc: number, specialAddress: number): Basic {
     const op = {
       type: Type.Basic, symbol, isExtended: false, opCode, qc, specialAddress, addressField: Necessity.Never, words: 1
     }
     return this.add(symbol, op)
   }
 
-  private addExtendedQc (symbol: string, opCode: number, qc: number, addressBias?: number): Basic {
+  protected addExtendedQc (symbol: string, opCode: number, qc: number, addressBias?: number): Basic {
     return this.addBasicExtended(true, symbol, opCode, qc, BasicAddressRange.ErasableMemory, addressBias)
   }
 
-  private addExtended (symbol: string, opCode: number, addressRange: BasicAddressRange, addressBias?: number): Basic {
+  protected addExtended (symbol: string, opCode: number, addressRange: BasicAddressRange, addressBias?: number): Basic {
     return this.addBasicExtended(true, symbol, opCode, undefined, addressRange, addressBias)
   }
 
-  private addExtendedSpecial (symbol: string, opCode: number, specialAddress: number): Basic {
+  protected addExtendedSpecial (symbol: string, opCode: number, specialAddress: number): Basic {
     const op = {
       type: Type.Basic, symbol, isExtended: true, opCode, specialAddress, addressField: Necessity.Never, words: 1
     }
     return this.add(symbol, op)
   }
 
-  private addExtendedQcSpecial (symbol: string, opCode: number, qc: number, specialAddress: number): Basic {
+  protected addExtendedQcSpecial (symbol: string, opCode: number, qc: number, specialAddress: number): Basic {
     const op = {
       type: Type.Basic, symbol, isExtended: true, opCode, qc, specialAddress, addressField: Necessity.Never, words: 1
     }
     return this.add(symbol, op)
   }
 
-  private addExtendedIO (symbol: string, pc: number): Basic {
+  protected addExtendedIO (symbol: string, pc: number): Basic {
     const op = {
       type: Type.Basic,
       symbol,
@@ -362,7 +432,7 @@ export abstract class Operations {
     return this.add(symbol, op)
   }
 
-  private createBasicExtended (
+  protected createBasicExtended (
     isExtended: boolean,
     symbol: string,
     opCode: number,
@@ -383,7 +453,7 @@ export abstract class Operations {
     }
   }
 
-  private addBasicExtended (
+  protected addBasicExtended (
     isExtended: boolean,
     symbol: string,
     opCode: number,
@@ -396,56 +466,615 @@ export abstract class Operations {
     return this.add(symbol, op)
   }
 
-  protected addInterpretiveUnary (symbol: string, selectionCodeOctal: string): Interpretive {
-    return this.addInterpretive1(symbol, 0, selectionCodeOctal, InterpretiveType.Unary, false)
+  protected createFullInterpretive (
+    symbol: string,
+    opCode: number | undefined,
+    otherCodeOctal: string | undefined,
+    subType: InterpretiveType,
+    rhs: boolean,
+    operand1?: InterpretiveOperand,
+    operand2?: InterpretiveOperand): Interpretive {
+    const otherCode = otherCodeOctal === undefined ? undefined : Number.parseInt(otherCodeOctal, 8)
+    return { type: Type.Interpretive, subType, rhs, symbol, opCode, code: otherCode, words: 1, operand1, operand2 }
   }
 
-  protected addInterpretiveUnaryRhs (symbol: string, selectionCodeOctal: string): Interpretive {
-    return this.addInterpretive1(symbol, 0, selectionCodeOctal, InterpretiveType.Unary, true)
+  protected addNumeric (symbol: string, words: number): NumericConstant {
+    const op = { type: Type.Numeric, symbol, words }
+    return this.add(symbol, op)
+  }
+
+  protected alias (original: string, alias: string): void {
+    const op = this.ops.get(original)
+    if (op === undefined) {
+      throw new Error('unknown symbol to alias: ' + original)
+    }
+    if (this.ops.has(alias)) {
+      throw new Error('duplicate symbol as alias: ' + alias)
+    }
+    this.ops.set(alias, op)
+  }
+}
+
+class Block1Operations extends Operations {
+  private readonly XCADR: AddressConstant
+  private readonly EXTEND: Basic
+  private readonly INDEX: Basic
+  private readonly EXTENDED_INDEX: Basic
+  private readonly STORE: Interpretive
+  private readonly STORE_INDEX: Interpretive
+
+  constructor () {
+    super()
+
+    //
+    // Address
+    //
+    this.addAddress('ADRES', 1, Necessity.Optional)
+    this.addAddress('CADR', 1, Necessity.Optional)
+    this.XCADR = this.addAddress('XCADR', 1, Necessity.Optional)
+    this.addAddress('P', 1, Necessity.Required)
+    this.alias('P', '')
+
+    //
+    // Basic
+    //
+    this.addBasic('TC', 0, BasicAddressRange.AnyMemory)
+    this.alias('TC', '0')
+    this.alias('TC', 'TCR')
+    this.addBasicSpecial('RELINT', 2, 14)
+    this.addBasicSpecial('INHINT', 2, 15)
+    this.addBasicSpecial('RESUME', 2, 21)
+    this.EXTEND = this.addBasicSpecial('EXTEND', 2, 0xBFF)
+    this.addBasic('CCS', 1, BasicAddressRange.ErasableMemory)
+    this.alias('CCS', '1')
+    this.addBasic('CAF', 3, BasicAddressRange.FixedMemory)
+    this.alias('CAF', '3')
+    this.addBasic('CS', 4, BasicAddressRange.AnyMemory)
+    this.alias('CS', '4')
+    this.addBasic('TS', 5, BasicAddressRange.ErasableMemory)
+    this.alias('TS', '5')
+    // See Solarium055 P39 where an INDEX is treated as extended without an EXTEND.
+    // Just define a single INDEX that can reference any memory.
+    this.INDEX = this.addBasic('INDEX', 2, BasicAddressRange.AnyMemory)
+    this.alias('INDEX', '2')
+    this.alias('INDEX', 'NDX')
+    this.addBasic('XCH', 3, BasicAddressRange.AnyMemory)
+    this.addBasicSpecial('XAQ', 0, 0)
+    this.addBasic('AD', 6, BasicAddressRange.AnyMemory)
+    this.alias('AD', '6')
+    this.addBasic('MASK', 7, BasicAddressRange.AnyMemory)
+    this.alias('MASK', '7')
+    this.alias('MASK', 'MSK')
+    // Block1 uses only Block2 "erasable" NOOP, equivalent to CA A (30000).
+    // REF BTM, Figure 7, page 1-45
+    this.addBasicSpecial('NOOP', 3, 0)
+    // Implied Address Codes
+    this.addBasicSpecial('COM', 4, 0)
+    this.addBasicSpecial('DOUBLE', 6, 0)
+    this.addBasicSpecial('OVSK', 5, 0)
+
+    //
+    // Extended
+    //
+    this.addExtended('MP', 4, BasicAddressRange.AnyMemory)
+    this.addExtended('DV', 5, BasicAddressRange.AnyMemory)
+    this.addExtended('SU', 6, BasicAddressRange.AnyMemory)
+    this.addExtendedSpecial('SQUARE', 4, 0)
+
+    //
+    // Interpreter
+    //
+    // Data mostly from Ref SUNRISE and the INTERPRETER_SECTION source files.
+    // Ref SUNRISE page 15 refers to grouping operation codes by prefix, but that organization isn't used here.
+    //
+
+    // DP binary with implicit load and implicit store
+    this.addInterpretiveIndexable('DAD', '34', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DSU', '44', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BDSU', '50', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DMP', '54', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DMPR', '110', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DDV', '64', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BDDV', '70', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('TSRT', '104', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('TSLT', '60', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('TSLC', '100', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('SIGN', '120', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.alias('SIGN', 'SGN')
+
+    // DP unary with implicit load and implicit store
+    this.addInterpretiveIndexable('SIN', '103', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('COS', '113', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('ASIN', '63', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('ACOS', '73', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('SQRT', '123', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DSQ', '133', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DMOVE', '153', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('ABS', '53', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // DP binary with implicit load and only explicit store
+    this.addInterpretiveIndexable('BPL', '160', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BZE', '140', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BMN', '20', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BHIZ', '40', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // Vector binary with implicit load and implicit store
+    this.addInterpretiveIndexable('VAD', '134', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VSU', '14', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BVSU', '144', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VXV', '170', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('MXV', '124', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VXM', '130', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VPROJ', '174', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VSLT', '154', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VSRT', '150', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // Vector unary with implicit load and implicit store
+    this.addInterpretiveIndexable('UNIT', '23', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VMOVE', '13', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('ABVAL', '33', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VSQ', '43', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // "Binary" with only explicit load and only explicit store
+    // Documented and treated as binary for indexing purposes, but only seem to take a single IAW
+    this.addInterpretiveIndexableRhs('ITC', '4', IO(InterpretiveOperandType.Address, false, true, false, false, true))
+    this.addInterpretiveIndexable('BOV', '30', IO(InterpretiveOperandType.Address, false, true, false, true, true))
+    this.addInterpretiveIndexable('STZ', '24', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+
+    // TP binary with implicit load and implicit store
+    this.addInterpretiveIndexable('TAD', '74', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('TSU', '114', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // TP unary with implicit load and implicit store
+    this.addInterpretiveIndexable('TMOVE', '3', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('TP', '3', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // Misc binary
+    this.addInterpretiveIndexable('VXSC', '10', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DOT', '164', IO(InterpretiveOperandType.Address, true, true, false, true, true), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // Misc unary
+    this.addInterpretiveIndexable('COMP', '143', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveMisc('ROUND', '145')
+    this.addInterpretiveIndexable('VDEF', '173', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('SMOVE', '163', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+
+    // Misc non-indexable with only explicit load and only explicit store
+    this.addInterpretiveMiscRhs('EXIT', '1')
+    this.addInterpretiveMisc('RTB', '5', IO(InterpretiveOperandType.Address, false, false, false, false, true))
+    this.addInterpretiveMisc('AXT,1', '11', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('AXT,2', '15', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('AXC,1', '121', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('AXC,2', '125', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('LXA,1', '21', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('LXA,2', '25', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('LXC,1', '31', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('LXC,2', '35', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('SXA,1', '41', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('SXA,2', '45', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XCHX,1', '51', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XCHX,2', '55', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('INCR,1', '61', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('INCR,2', '65', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XAD,1', '71', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XAD,2', '75', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XSU,1', '101', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XSU,2', '105', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('AST,1', '111', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('AST,2', '115', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('TIX,1', '131', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('TIX,2', '135', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('NOLOD', '141')
+    this.addInterpretiveMisc('ITA', '151', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('ITCI', '155', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('SWITCH', '165', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('TEST', '161', IO(InterpretiveOperandType.Address, false, false, false, true, true), IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('LODON', '171')
+    this.addInterpretiveMiscRhs('ITCQ', '175')
+    this.STORE = this.addInterpretiveStore('STORE', '15', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+    this.STORE_INDEX = this.createInterpretiveStore('STORE', '7', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+  }
+
+  protected addInterpretive1 (
+    symbol: string,
+    opCode: number,
+    subType: InterpretiveType,
+    rhs: boolean,
+    operand1?: InterpretiveOperand,
+    operand2?: InterpretiveOperand):
+    Interpretive {
+    const op = this.createFullInterpretive(symbol, opCode, undefined, subType, rhs, operand1, operand2)
+    return this.add(symbol, op)
   }
 
   protected addInterpretiveIndexable (
     symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
     Interpretive {
-    return this.addInterpretive1(symbol, 1, selectionCodeOctal, InterpretiveType.Indexable, false, operand1, operand2)
+    const opCode = Number.parseInt(selectionCodeOctal, 8)
+    return this.addInterpretive1(symbol, opCode, InterpretiveType.Indexable, false, operand1, operand2)
   }
 
   protected addInterpretiveIndexableRhs (
     symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
     Interpretive {
-    return this.addInterpretive1(symbol, 1, selectionCodeOctal, InterpretiveType.Indexable, true, operand1, operand2)
-  }
-
-  protected addInterpretiveShift (
-    symbol: string, code: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
-    return this.addInterpretive2(symbol, this.INTERPRETIVE_OPCODE_SHIFT, code, InterpretiveType.Shift, operand1, operand2)
-  }
-
-  protected addInterpretiveStore (
-    symbol: string, tsOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
-    return this.addInterpretive2(symbol, undefined, tsOctal, InterpretiveType.Store, operand1, operand2)
-  }
-
-  protected createInterpretiveStore (
-    symbol: string, tsOctal: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
-    return this.createFullInterpretive(symbol, undefined, tsOctal, InterpretiveType.Store, false, operand1, operand2)
+    const opCode = Number.parseInt(selectionCodeOctal, 8)
+    return this.addInterpretive1(symbol, opCode, InterpretiveType.Indexable, true, operand1, operand2)
   }
 
   protected addInterpretiveMisc (
-    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
+    symbol: string, selectionCodeOctal: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand):
     Interpretive {
-    return this.addInterpretive1(symbol, 2, selectionCodeOctal, InterpretiveType.Misc, false, operand1, operand2)
+    const opCode = Number.parseInt(selectionCodeOctal, 8)
+    return this.addInterpretive1(symbol, opCode, InterpretiveType.Misc, false, operand1, operand2)
   }
 
   protected addInterpretiveMiscRhs (
-    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
-    Interpretive {
-    return this.addInterpretive1(symbol, 2, selectionCodeOctal, InterpretiveType.Misc, true, operand1, operand2)
+    symbol: string, selectionCodeOctal: string, operand1?: InterpretiveOperand): Interpretive {
+    const opCode = Number.parseInt(selectionCodeOctal, 8)
+    return this.addInterpretive1(symbol, opCode, InterpretiveType.Misc, true, operand1)
   }
 
-  protected addInterpretiveLogical (
-    symbol: string, codeOctal: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
-    return this.addInterpretive2(symbol, this.INTERPRETIVE_OPCODE_LOGICAL, codeOctal, InterpretiveType.Logical, operand1, operand2)
+  protected addInterpretiveStore (
+    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand): Interpretive {
+    const op = this.createInterpretiveStore(symbol, selectionCodeOctal, operand1)
+    return this.add(symbol, op)
+  }
+
+  protected createInterpretiveStore (
+    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand): Interpretive {
+    const op = this.createFullInterpretive(
+      symbol, undefined, selectionCodeOctal, InterpretiveType.Store, false, operand1)
+    return op
+  }
+
+  checksumTcConstant (): AddressConstant {
+    return this.XCADR
+  }
+
+  checkExtendedIndex (op: Operation, extended: boolean): Operation {
+    return extended && op === this.INDEX ? this.EXTENDED_INDEX : op
+  }
+
+  isIndex (op: Operation): boolean {
+    return op === this.INDEX || op === this.EXTENDED_INDEX
+  }
+
+  isExtend (op: Operation): boolean {
+    return op === this.EXTEND || op === this.EXTENDED_INDEX
+  }
+
+  checkIndexedStore (op: Operation, indexed: boolean): Operation {
+    return op
+  }
+
+  storeFirstWordIndexable (op: Operation): Necessity {
+    if (op.type === Type.Interpretive) {
+      const inter = op as Interpretive
+      return inter === this.STORE ? Necessity.Optional : Necessity.Never
+    }
+    return Necessity.Never
+  }
+
+  storeFirstWordIndexed (op: Interpretive, index: number): Interpretive {
+    if (op === this.STORE) {
+      return this.STORE_INDEX
+    } else {
+      return op
+    }
+  }
+}
+
+abstract class Block2Operations extends Operations {
+  private readonly GENADR: AddressConstant
+  private readonly EXTEND: Basic
+  private readonly INDEX: Basic
+  private readonly EXTENDED_INDEX: Basic
+  protected readonly STORE: Interpretive
+  protected readonly STORE_INDEX_1: Interpretive
+  protected readonly STORE_INDEX_2: Interpretive
+
+  constructor () {
+    super()
+
+    //
+    // Clerical
+    //
+    this.addClerical('=ECADR', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('=MINUS', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('=PLUS', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('CHECK=', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('BLOCK', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('COUNT', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Optional)
+    this.addClerical('EBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Required)
+    this.addClerical('MEMORY', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
+    this.addClerical('SBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+
+    //
+    // Address
+    //
+    this.addAddress('2CADR', 2, Necessity.Required)
+    this.alias('2CADR', '2BCADR')
+    this.addAddress('2FCADR', 2, Necessity.Required)
+    this.addAddress('ADRES', 1, Necessity.Optional)
+    this.addAddress('BBCON', 1, Necessity.Optional)
+    this.addAddress('CADR', 1, Necessity.Optional)
+    this.alias('CADR', 'FCADR')
+    this.addAddress('ECADR', 1, Necessity.Required)
+    this.GENADR = this.addAddress('GENADR', 1, Necessity.Optional)
+    this.addAddress('P', 1, Necessity.Required)
+    this.alias('P', '')
+    this.addAddress('REMADR', 1, Necessity.Required)
+    // Telemetry downlist: Ref SYM, VC-1 & VC-3
+    this.addAddress('DNCHAN', 1, Necessity.Required)
+    this.addAddress('DNPTR', 1, Necessity.Required)
+    this.addAddress('1DNADR', 1, Necessity.Required)
+    this.addAddress('2DNADR', 1, Necessity.Required)
+    this.addAddress('3DNADR', 1, Necessity.Required)
+    this.addAddress('4DNADR', 1, Necessity.Required)
+    this.addAddress('5DNADR', 1, Necessity.Required)
+    this.addAddress('6DNADR', 1, Necessity.Required)
+
+    //
+    // Basic
+    //
+    this.addBasic('TC', 0, BasicAddressRange.AnyMemory)
+    this.alias('TC', '0')
+    this.alias('TC', 'TCR')
+    this.addBasicSpecial('RELINT', 0, 3)
+    this.addBasicSpecial('INHINT', 0, 4)
+    this.EXTEND = this.addBasicSpecial('EXTEND', 0, 6)
+    this.addBasicQc('CCS', 1, 0)
+    this.alias('CCS', '1')
+    this.addBasic('TCF', 1, BasicAddressRange.FixedMemory)
+    this.addBasicQc('DAS', 2, 0, 1)
+    this.alias('DAS', '2')
+    this.addBasicQc('LXCH', 2, 1)
+    this.addBasicQc('INCR', 2, 2)
+    this.addBasicQc('ADS', 2, 3)
+    this.addBasic('CA', 3, BasicAddressRange.AnyMemory)
+    this.alias('CA', '3')
+    this.addBasic('CAE', 3, BasicAddressRange.ErasableMemory)
+    this.addBasic('CAF', 3, BasicAddressRange.FixedMemory)
+    this.addBasic('CS', 4, BasicAddressRange.AnyMemory)
+    this.alias('CS', '4')
+    this.addBasicQc('TS', 5, 2)
+    // There are two INDEXES, one basic and one extended.
+    // This is the basic one.
+    this.INDEX = this.addBasicQc('INDEX', 5, 0)
+    // This is the extended one.
+    this.EXTENDED_INDEX = this.createBasicExtended(true, 'INDEX', 5, 0, BasicAddressRange.AnyMemory, undefined)
+    this.alias('INDEX', '5')
+    this.alias('INDEX', 'NDX')
+    this.addBasicSpecial('RESUME', 5, 15)
+    this.addBasicQc('DXCH', 5, 1, 1)
+    this.addBasicQc('XCH', 5, 3)
+    this.addBasic('AD', 6, BasicAddressRange.AnyMemory)
+    this.alias('AD', '6')
+    this.addBasic('MASK', 7, BasicAddressRange.AnyMemory)
+    this.alias('MASK', '7')
+    this.alias('MASK', 'MSK')
+    // Implied Address Codes
+    this.addBasicSpecial('COM', 4, 0)
+    this.addBasicQcSpecial('DDOUBL', 2, 0, 1)
+    this.addBasicSpecial('DOUBLE', 6, 0)
+    this.addBasicQcSpecial('DTCB', 5, 1, 6)
+    this.addBasicQcSpecial('DTCF', 5, 1, 5)
+    // There are two NOOP opcodes, one if in fixed memory and one if in erasable memory.
+    // The erasable one is equivalent to CA A (30000).
+    // The fixed one, given here, is equivalent to TCF (I + 1).
+    // REF BTM, Figure 7, page 1-45
+    this.addBasic('NOOP', 1, BasicAddressRange.FixedMemory, 1)
+    this.addBasicQcSpecial('OVSK', 5, 2, 0)
+    this.addBasicSpecial('RETURN', 0, 2)
+    this.addBasicQcSpecial('TCAA', 5, 2, 5)
+    this.addBasicSpecial('XLQ', 0, 1)
+    this.addBasicSpecial('XXALQ', 0, 0)
+    this.addBasicQcSpecial('ZL', 2, 1, 7)
+
+    //
+    // Extended
+    //
+    this.addExtendedIO('READ', 0)
+    this.addExtendedIO('WRITE', 1)
+    this.addExtendedIO('RAND', 2)
+    this.addExtendedIO('WAND', 3)
+    this.addExtendedIO('ROR', 4)
+    this.addExtendedIO('WOR', 5)
+    this.addExtendedIO('RXOR', 6)
+
+    this.addExtended('EDRUPT', 0, BasicAddressRange.FixedMemory)
+    this.addExtendedQc('DV', 1, 0)
+    this.addExtended('BZF', 1, BasicAddressRange.FixedMemory)
+    this.addExtendedQc('MSU', 2, 0)
+    this.addExtendedQc('QXCH', 2, 1)
+    this.addExtendedQc('AUG', 2, 2)
+    this.addExtendedQc('DIM', 2, 3)
+    this.addExtended('DCA', 3, BasicAddressRange.AnyMemory, 1)
+    this.addExtended('DCS', 4, BasicAddressRange.AnyMemory, 1)
+    this.addExtendedQc('SU', 6, 0)
+    this.addExtended('BZMF', 6, BasicAddressRange.FixedMemory)
+    this.addExtended('MP', 7, BasicAddressRange.AnyMemory)
+    // Implied Address Codes
+    this.addExtendedSpecial('DCOM', 4, 1)
+    this.addExtendedSpecial('SQUARE', 7, 0)
+    this.addExtendedQcSpecial('ZQ', 2, 1, 7)
+
+    //
+    // Interpreter
+    //
+    // Data mostly from tables in Ref BTM, 2-12 - 2-17 but this document predates certain interpreter features such as 12
+    // bit store addresses, and so the data needs to be adjusted in some cases.
+    // CCALL, CGOTO, PUSHD, SIGN: should be "push", verified from Luminary099 INTERPRETER page 1011
+    // PDVL: should not be "push" per Ref BTM, but seems to be used that way
+    // SIGN: indexable and applies to fixed mem per Ref SYM, VIB-11
+    // NORM: indexable per Ref SYM, VB-26
+    //
+
+    // Scalar computations
+    // Ref SYM VIB-3 - VIB-14
+    this.addInterpretiveUnary('ABS', '26')
+    this.addInterpretiveUnary('ACOS', '12')
+    this.alias('ACOS', 'ARCCOS')
+    this.addInterpretiveUnary('ASIN', '10')
+    this.alias('ASIN', 'ARCSIN')
+    this.addInterpretiveIndexable('BDDV', '22', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('BDSU', '33', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('COS', '6')
+    this.alias('COS', 'COSINE')
+    this.addInterpretiveIndexable('DAD', '34', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('DCOMP', '20')
+    this.addInterpretiveIndexable('DDV', '21', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DMP', '36', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DMPR', '20', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('DSQ', '14')
+    this.addInterpretiveIndexable('DSU', '32', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('ROUND', '16')
+    this.addInterpretiveIndexable('SIGN', '2', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('SIN', '4')
+    this.alias('SIN', 'SINE')
+    this.addInterpretiveUnary('SQRT', '2')
+    this.addInterpretiveIndexable('TAD', '1', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    // Vector computations
+    // Ref SYM VIB-15 - VIB-25
+    this.addInterpretiveUnary('ABVAL', '26')
+    this.addInterpretiveIndexable('BVSU', '26', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('DOT', '27', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('MXV', '13', IO(InterpretiveOperandType.Address, false, true, false, true, true))
+    this.addInterpretiveUnary('UNIT', '24')
+    this.addInterpretiveIndexable('VAD', '24', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('VCOMP', '20')
+    this.addInterpretiveUnary('VDEF', '22')
+    this.addInterpretiveIndexable('VPROJ', '31', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('VSQ', '30')
+    this.addInterpretiveIndexable('VSU', '25', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VXM', '16', IO(InterpretiveOperandType.Address, false, true, false, true, true))
+    this.addInterpretiveIndexable('VXSC', '3', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VXV', '30', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('V/SC', '7', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    // Shifting operations
+    // Ref SYM VIB-26 - VIB-34
+    this.addInterpretiveIndexable('NORM', '17', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+    this.alias('NORM', 'SLC')
+    this.addInterpretiveShift('SL', '0', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
+    this.addInterpretiveUnary('SL1', '5')
+    this.addInterpretiveUnary('SL2', '15')
+    this.addInterpretiveUnary('SL3', '25')
+    this.addInterpretiveUnary('SL4', '35')
+    this.addInterpretiveShift('SLR', '2', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
+    this.addInterpretiveUnary('SL1R', '1')
+    this.addInterpretiveUnary('SL2R', '11')
+    this.addInterpretiveUnary('SL3R', '21')
+    this.addInterpretiveUnary('SL4R', '31')
+    this.addInterpretiveShift('SR', '1', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
+    this.addInterpretiveUnary('SR1', '7')
+    this.addInterpretiveUnary('SR2', '17')
+    this.addInterpretiveUnary('SR3', '27')
+    this.addInterpretiveUnary('SR4', '37')
+    this.addInterpretiveShift('SRR', '3', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
+    this.addInterpretiveUnary('SR1R', '3')
+    this.addInterpretiveUnary('SR2R', '13')
+    this.addInterpretiveUnary('SR3R', '23')
+    this.addInterpretiveUnary('SR4R', '33')
+    this.addInterpretiveShift('VSL', '0', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
+    this.addInterpretiveUnary('VSL1', '1')
+    this.addInterpretiveUnary('VSL2', '5')
+    this.addInterpretiveUnary('VSL3', '11')
+    this.addInterpretiveUnary('VSL4', '15')
+    this.addInterpretiveUnary('VSL5', '21')
+    this.addInterpretiveUnary('VSL6', '25')
+    this.addInterpretiveUnary('VSL7', '31')
+    this.addInterpretiveUnary('VSL8', '35')
+    this.addInterpretiveShift('VSR', '1', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
+    this.addInterpretiveUnary('VSR1', '3')
+    this.addInterpretiveUnary('VSR2', '7')
+    this.addInterpretiveUnary('VSR3', '13')
+    this.addInterpretiveUnary('VSR4', '17')
+    this.addInterpretiveUnary('VSR5', '23')
+    this.addInterpretiveUnary('VSR6', '27')
+    this.addInterpretiveUnary('VSR7', '33')
+    this.addInterpretiveUnary('VSR8', '37')
+    // Transmission operations
+    // Ref SYM VIB-35 - VIB-40
+    this.addInterpretiveIndexable('DLOAD', '6', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    // this.addInterpretiveMisc('ITA', 'XX', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    // this.alias('ITA', 'STQ')
+    this.addInterpretiveIndexable('PDDL', '12', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('PDVL', '14', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveUnary('PUSH', '36')
+    this.addInterpretiveIndexable('SETPD', '37', IO(InterpretiveOperandType.Constant, true, false, false, false, false))
+    this.addInterpretiveIndexable('SLOAD', '10', IO(InterpretiveOperandType.Address, false, true, false, true, true))
+    this.addInterpretiveIndexable('SSP', '11', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveUnaryRhs('STADR', '32')
+    // this.addInterpretiveStore('STCALL', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    // Store indexing is a holdover from BLK2 - implicit based on the operand structure of its only IAW.
+    // The appropriate store ts code instruction will be chosen by the parser based on whether its IAW is indexed or not.
+    // All store instruction operands but STCALL are marked as indexable, however, since that affects how they are encoded.
+    this.STORE = this.addInterpretiveStore('STORE', '0', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+    this.STORE_INDEX_1 = this.createInterpretiveStore('STORE', '1', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+    this.STORE_INDEX_2 = this.createInterpretiveStore('STORE', '2', IO(InterpretiveOperandType.Address, false, true, false, true, false))
+    // this.addInterpretiveStore('STODL', 'XX', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    // this.addInterpretiveStore('STOVL', 'XX', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('TLOAD', '5', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.addInterpretiveIndexable('VLOAD', '0', IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    // Control operations
+    // Ref SYM VIB-41 - VIB-45
+    // this.addInterpretiveMisc('BHIZ', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMisc('BMN', '27', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMisc('BOV', '37', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMisc('BOVB', '36', IO(InterpretiveOperandType.Address, false, false, false, false, true))
+    this.addInterpretiveMisc('BPL', '26', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMisc('BZE', '24', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    // this.addInterpretiveMiscRhs('CALL', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    // this.alias(CALL, 'CALRB')
+    this.addInterpretiveIndexableRhs('CCALL', '15', IO(InterpretiveOperandType.Address, true, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, true))
+    this.alias('CCALL', 'CCLRB')
+    this.addInterpretiveIndexableRhs('CGOTO', '4', IO(InterpretiveOperandType.Address, true, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, true))
+    this.addInterpretiveUnaryRhs('EXIT', '0')
+    this.addInterpretiveMiscRhs('GOTO', '25', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    // this.addInterpretiveMisc('RTB', 'XX', IO(InterpretiveOperandType.Address, false, false, false, false, true))
+    this.addInterpretiveUnaryRhs('RVQ', '34')
+    this.alias('RVQ', 'ITCQ')
+    // Index register oriented operations
+    // Ref SYM VIB-46 - VIB-49
+    this.addInterpretiveMisc('AXC,1', '3', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveMisc('AXC,2', '2', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveMisc('AXT,1', '1', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveMisc('AXT,2', '0', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveMisc('INCR,1', '15', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveMisc('INCR,2', '14', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveMisc('LXA,1', '5', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('LXA,2', '4', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('LXC,1', '7', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('LXC,2', '6', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('SXA,1', '11', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('SXA,2', '10', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('TIX,1', '17', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMisc('TIX,2', '16', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMisc('XAD,1', '21', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XAD,2', '20', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XCHX,1', '13', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('XCHX,2', '12', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.addInterpretiveMisc('XSU,1', '23', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    this.addInterpretiveMisc('XSU,2', '22', IO(InterpretiveOperandType.Address, false, false, false, true, true))
+    // Logic bit operations
+    // Ref SYM VIB-50 - VIB-54
+    this.addInterpretiveLogical('BOF', '16', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.alias('BOF', 'BOFF')
+    this.addInterpretiveLogical('BOFCLR', '12', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('BOFINV', '6', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('BOFSET', '2', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('BON', '14', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('BONCLR', '10', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('BONINV', '4', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('BONSET', '0', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('CLEAR', '13', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.alias('CLEAR', 'CLR')
+    this.addInterpretiveLogical('CLRGO', '11', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('INVERT', '7', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.alias('INVERT', 'INV')
+    this.addInterpretiveLogical('INVGO', '5', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveLogical('SET', '3', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
+    this.addInterpretiveLogical('SETGO', '1', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
   }
 
   protected addInterpretive1 (
@@ -475,409 +1104,130 @@ export abstract class Operations {
     return this.add(symbol, op)
   }
 
-  protected createFullInterpretive (
-    symbol: string,
-    opCode: number | undefined,
-    otherCodeOctal: string | undefined,
-    subType: InterpretiveType,
-    rhs: boolean,
-    operand1?: InterpretiveOperand,
-    operand2?: InterpretiveOperand): Interpretive {
-    const otherCode = otherCodeOctal === undefined ? undefined : Number.parseInt(otherCodeOctal, 8)
-    return { type: Type.Interpretive, subType, rhs, symbol, opCode, code: otherCode, words: 1, operand1, operand2 }
+  protected addInterpretiveUnary (symbol: string, selectionCodeOctal: string): Interpretive {
+    return this.addInterpretive1(symbol, 0, selectionCodeOctal, InterpretiveType.Unary, false)
   }
 
-  protected addNumeric (symbol: string, words: number): NumericConstant {
-    const op = { type: Type.Numeric, symbol, words }
-    return this.add(symbol, op)
+  protected addInterpretiveUnaryRhs (symbol: string, selectionCodeOctal: string): Interpretive {
+    return this.addInterpretive1(symbol, 0, selectionCodeOctal, InterpretiveType.Unary, true)
   }
 
-  protected alias<Type extends BaseOperation> (original: Type, alias: string): Type {
-    if (this.ops.has(alias)) {
-      throw new Error('duplicate symbol as alias: ' + alias)
-    }
-    this.ops.set(alias, original)
-    return original
+  protected addInterpretiveIndexable (
+    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
+    Interpretive {
+    return this.addInterpretive1(symbol, 1, selectionCodeOctal, InterpretiveType.Indexable, false, operand1, operand2)
   }
 
-  //
-  // Clerical
-  //
-  readonly EQ_ECADR = this.addClerical('=ECADR', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly EQ_MINUS = this.addClerical('=MINUS', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly EQ_PLUS = this.addClerical('=PLUS', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly CHECK_EQ = this.addClerical('CHECK=', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
-  // Note erase can be 0 or 1 words, depending on the address field.
-  // This is handled in the assembler, but the parser needs it to be non-zero to perform other checks.
-  readonly ERASE = this.addClerical('ERASE', 1, Necessity.Optional, Necessity.Optional, Necessity.Never, Necessity.Never)
-  readonly BANK = this.addClerical('BANK', 0, Necessity.Never, Necessity.Optional, Necessity.Never, Necessity.Never)
-  readonly BLOCK = this.addClerical('BLOCK', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly BNKSUM = this.addClerical('BNKSUM', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly COUNT = this.addClerical('COUNT', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Optional)
-  readonly EBANK_EQ = this.addClerical('EBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Required)
-  readonly EQUALS = this.addClerical('EQUALS', 0, Necessity.Optional, Necessity.Optional, Necessity.Never, Necessity.Never)
-  readonly EQ = this.alias(this.EQUALS, '=')
-  readonly MEMORY = this.addClerical('MEMORY', 0, Necessity.Required, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly SBANK_EQ = this.addClerical('SBANK=', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly SETLOC = this.addClerical('SETLOC', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
-  readonly LOC = this.alias(this.SETLOC, 'LOC')
-  readonly SUBRO = this.addClerical('SUBRO', 0, Necessity.Never, Necessity.Required, Necessity.Never, Necessity.Never)
+  protected addInterpretiveIndexableRhs (
+    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
+    Interpretive {
+    return this.addInterpretive1(symbol, 1, selectionCodeOctal, InterpretiveType.Indexable, true, operand1, operand2)
+  }
 
-  //
-  // Address
-  //
-  readonly TWO_CADR = this.addAddress('2CADR', 2, Necessity.Required)
-  readonly TWO_BCADR = this.alias(this.TWO_CADR, '2BCADR')
-  readonly TWO_FCADR = this.addAddress('2FCADR', 2, Necessity.Required)
-  readonly ADRES = this.addAddress('ADRES', 1, Necessity.Optional)
-  readonly BBCON = this.addAddress('BBCON', 1, Necessity.Optional)
-  readonly CADR = this.addAddress('CADR', 1, Necessity.Optional)
-  readonly FCADR = this.alias(this.CADR, 'FCADR')
-  readonly ECADR = this.addAddress('ECADR', 1, Necessity.Required)
-  readonly GENADR = this.addAddress('GENADR', 1, Necessity.Optional)
-  readonly P = this.addAddress('P', 1, Necessity.Required)
-  readonly EMPTY = this.alias(this.P, '')
-  readonly REMADR = this.addAddress('REMADR', 1, Necessity.Required)
-  // Telemetry downlist: Ref SYM, VC-1 & VC-3
-  readonly DNCHAN = this.addAddress('DNCHAN', 1, Necessity.Required)
-  readonly DNPTR = this.addAddress('DNPTR', 1, Necessity.Required)
-  readonly ONE_DNADR = this.addAddress('1DNADR', 1, Necessity.Required)
-  readonly TWO_DNADR = this.addAddress('2DNADR', 1, Necessity.Required)
-  readonly THREE_DNADR = this.addAddress('3DNADR', 1, Necessity.Required)
-  readonly FOUR_DNADR = this.addAddress('4DNADR', 1, Necessity.Required)
-  readonly FIVE_DNADR = this.addAddress('5DNADR', 1, Necessity.Required)
-  readonly SIX_DNADR = this.addAddress('6DNADR', 1, Necessity.Required)
+  protected addInterpretiveShift (
+    symbol: string, code: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
+    return this.addInterpretive2(symbol, INTERPRETIVE_OPCODE_SHIFT, code, InterpretiveType.Shift, operand1, operand2)
+  }
 
-  //
-  // Numeric
-  //
-  readonly TWO_DEC = this.addNumeric('2DEC', 2)
-  readonly TWO_OCT = this.addNumeric('2OCT', 2)
-  readonly TWO_OCTAL = this.alias(this.TWO_OCT, '2OCTAL')
-  readonly DEC = this.addNumeric('DEC', 1)
-  readonly OCT = this.addNumeric('OCT', 1)
-  readonly OCTAL = this.alias(this.OCT, 'OCTAL')
-  readonly MM = this.addNumeric('MM', 1)
-  readonly VN = this.addNumeric('VN', 1)
-  readonly NV = this.alias(this.VN, 'NV')
+  protected addInterpretiveStore (
+    symbol: string, tsOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
+    return this.addInterpretive2(symbol, undefined, tsOctal, InterpretiveType.Store, operand1, operand2)
+  }
 
-  //
-  // Basic
-  //
-  readonly TC = this.addBasic('TC', 0, BasicAddressRange.AnyMemory)
-  readonly ZERO = this.alias(this.TC, '0')
-  readonly TCR = this.alias(this.TC, 'TCR')
-  readonly RELINT = this.addBasicSpecial('RELINT', 0, 3)
-  readonly INHINT = this.addBasicSpecial('INHINT', 0, 4)
-  readonly EXTEND = this.addBasicSpecial('EXTEND', 0, 6)
-  readonly CCS = this.addBasicQc('CCS', 1, 0)
-  readonly ONE = this.alias(this.CCS, '1')
-  readonly TCF = this.addBasic('TCF', 1, BasicAddressRange.FixedMemory)
-  readonly DAS = this.addBasicQc('DAS', 2, 0, 1)
-  readonly TWO = this.alias(this.DAS, '2')
-  readonly LXCH = this.addBasicQc('LXCH', 2, 1)
-  readonly INCR = this.addBasicQc('INCR', 2, 2)
-  readonly ADS = this.addBasicQc('ADS', 2, 3)
-  readonly CA = this.addBasic('CA', 3, BasicAddressRange.AnyMemory)
-  readonly THREE = this.alias(this.CA, '3')
-  readonly CAE = this.addBasic('CAE', 3, BasicAddressRange.ErasableMemory)
-  readonly CAF = this.addBasic('CAF', 3, BasicAddressRange.FixedMemory)
-  readonly CS = this.addBasic('CS', 4, BasicAddressRange.AnyMemory)
-  readonly FOUR = this.alias(this.CS, '4')
-  readonly TS = this.addBasicQc('TS', 5, 2)
-  // There are two INDEXES, one basic and one extended.
-  // This is the basic one.
-  readonly INDEX = this.addBasicQc('INDEX', 5, 0)
-  // This is the extended one.
-  readonly EXTENDED_INDEX = this.createBasicExtended(true, 'INDEX', 5, 0, BasicAddressRange.AnyMemory, undefined)
-  readonly FIVE = this.alias(this.INDEX, '5')
-  readonly NDX = this.alias(this.INDEX, 'NDX')
-  readonly RESUME = this.addBasicSpecial('RESUME', 5, 15)
-  readonly DXCH = this.addBasicQc('DXCH', 5, 1, 1)
-  readonly XCH = this.addBasicQc('XCH', 5, 3)
-  readonly AD = this.addBasic('AD', 6, BasicAddressRange.AnyMemory)
-  readonly SIX = this.alias(this.AD, '6')
-  readonly MASK = this.addBasic('MASK', 7, BasicAddressRange.AnyMemory)
-  readonly SEVEN = this.alias(this.MASK, '7')
-  readonly MSK = this.alias(this.MASK, 'MSK')
-  // Implied Address Codes
-  readonly COM = this.addBasicSpecial('COM', 4, 0)
-  readonly DDOUBL = this.addBasicQcSpecial('DDOUBL', 2, 0, 1)
-  readonly DOUBLE = this.addBasicSpecial('DOUBLE', 6, 0)
-  readonly DTCB = this.addBasicQcSpecial('DTCB', 5, 1, 6)
-  readonly DTCF = this.addBasicQcSpecial('DTCF', 5, 1, 5)
-  // There are two NOOP opcodes, one if in fixed memory and one if in erasable memory.
-  // The erasable one is equivalent to CA A (30000), but we don't assemble into erasable memory.
-  // The fixed one is equivalent to TCF (I + 1).
-  // REF BTM, Figure 7, page 1-45
-  readonly NOOP = this.addBasic('NOOP', 1, BasicAddressRange.FixedMemory, 1)
-  readonly OVSK = this.addBasicQcSpecial('OVSK', 5, 2, 0)
-  readonly RETURN = this.addBasicSpecial('RETURN', 0, 2)
-  readonly TCAA = this.addBasicQcSpecial('TCAA', 5, 2, 5)
-  readonly XLQ = this.addBasicSpecial('XLQ', 0, 1)
-  readonly XXALQ = this.addBasicSpecial('XXALQ', 0, 0)
-  readonly ZL = this.addBasicQcSpecial('ZL', 2, 1, 7)
+  protected createInterpretiveStore (
+    symbol: string, tsOctal: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
+    return this.createFullInterpretive(symbol, undefined, tsOctal, InterpretiveType.Store, false, operand1, operand2)
+  }
 
-  //
-  // Extended
-  //
-  readonly READ = this.addExtendedIO('READ', 0)
-  readonly WRITE = this.addExtendedIO('WRITE', 1)
-  readonly RAND = this.addExtendedIO('RAND', 2)
-  readonly WAND = this.addExtendedIO('WAND', 3)
-  readonly ROR = this.addExtendedIO('ROR', 4)
-  readonly WOR = this.addExtendedIO('WOR', 5)
-  readonly RXOR = this.addExtendedIO('RXOR', 6)
+  protected addInterpretiveMisc (
+    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
+    Interpretive {
+    return this.addInterpretive1(symbol, 2, selectionCodeOctal, InterpretiveType.Misc, false, operand1, operand2)
+  }
 
-  readonly EDRUPT = this.addExtended('EDRUPT', 0, BasicAddressRange.FixedMemory)
-  readonly DV = this.addExtendedQc('DV', 1, 0)
-  readonly BZF = this.addExtended('BZF', 1, BasicAddressRange.FixedMemory)
-  readonly MSU = this.addExtendedQc('MSU', 2, 0)
-  readonly QXCH = this.addExtendedQc('QXCH', 2, 1)
-  readonly AUG = this.addExtendedQc('AUG', 2, 2)
-  readonly DIM = this.addExtendedQc('DIM', 2, 3)
-  readonly DCA = this.addExtended('DCA', 3, BasicAddressRange.AnyMemory, 1)
-  readonly DCS = this.addExtended('DCS', 4, BasicAddressRange.AnyMemory, 1)
-  readonly SU = this.addExtendedQc('SU', 6, 0)
-  readonly BZMF = this.addExtended('BZMF', 6, BasicAddressRange.FixedMemory)
-  readonly MP = this.addExtended('MP', 7, BasicAddressRange.AnyMemory)
-  // Implied Address Codes
-  readonly DCOM = this.addExtendedSpecial('DCOM', 4, 1)
-  readonly SQUARE = this.addExtendedSpecial('SQUARE', 7, 0)
-  readonly ZQ = this.addExtendedQcSpecial('ZQ', 2, 1, 7)
-  // Extended aliases that appear in documentation but not in code.
-  // alias('4', 'MP')
-  // alias('5', 'DV')
-  // alias('6', 'SU')
+  protected addInterpretiveMiscRhs (
+    symbol: string, selectionCodeOctal: string, operand1: InterpretiveOperand, operand2?: InterpretiveOperand):
+    Interpretive {
+    return this.addInterpretive1(symbol, 2, selectionCodeOctal, InterpretiveType.Misc, true, operand1, operand2)
+  }
 
-  //
-  // Interpreter
-  //
-  // Data mostly from tables in Ref BTM, 2-12 - 2-17 but this document predates certain interpreter features such as 12
-  // bit store addresses, and so the data needs to be adjusted in some cases.
-  // CCALL, CGOTO, PUSHD, SIGN: should be "push", verified from Luminary099 INTERPRETER page 1011
-  // PDVL: should not be "push" per Ref BTM, but seems to be used that way
-  // SIGN: indexable and applies to fixed mem per Ref SYM, VIB-11
-  // NORM: indexable per Ref SYM, VB-26
-  //
+  protected addInterpretiveLogical (
+    symbol: string, codeOctal: string, operand1?: InterpretiveOperand, operand2?: InterpretiveOperand): Interpretive {
+    return this.addInterpretive2(symbol, INTERPRETIVE_OPCODE_LOGICAL, codeOctal, InterpretiveType.Logical, operand1, operand2)
+  }
 
-  // Ref SYM, VIB-50 prefix 2, selection code 34
-  readonly INTERPRETIVE_OPCODE_LOGICAL = 114
-  // Ref SYM, VIB-26 prefix 1, selection code 23
-  readonly INTERPRETIVE_OPCODE_SHIFT = 77
+  checksumTcConstant (): AddressConstant {
+    return this.GENADR
+  }
 
-  // Scalar computations
-  // Ref SYM VIB-3 - VIB-14
-  readonly ABS = this.addInterpretiveUnary('ABS', '26')
-  readonly ACOS = this.addInterpretiveUnary('ACOS', '12')
-  readonly ARCCOS = this.alias(this.ACOS, 'ARCCOS')
-  readonly ASIN = this.addInterpretiveUnary('ASIN', '10')
-  readonly ARCSIN = this.alias(this.ASIN, 'ARCSIN')
-  readonly BDDV = this.addInterpretiveIndexable('BDDV', '22', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly BDSU = this.addInterpretiveIndexable('BDSU', '33', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly COS = this.addInterpretiveUnary('COS', '6')
-  readonly COSINE = this.alias(this.COS, 'COSINE')
-  readonly DAD = this.addInterpretiveIndexable('DAD', '34', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly DCOMP = this.addInterpretiveUnary('DCOMP', '20')
-  readonly DDV = this.addInterpretiveIndexable('DDV', '21', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly DMP = this.addInterpretiveIndexable('DMP', '36', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly DMPR = this.addInterpretiveIndexable('DMPR', '20', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly DSQ = this.addInterpretiveUnary('DSQ', '14')
-  readonly DSU = this.addInterpretiveIndexable('DSU', '32', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly ROUND = this.addInterpretiveUnary('ROUND', '16')
-  readonly SIGN = this.addInterpretiveIndexable('SIGN', '2', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly SIN = this.addInterpretiveUnary('SIN', '4')
-  readonly SINE = this.alias(this.SIN, 'SINE')
-  readonly SQRT = this.addInterpretiveUnary('SQRT', '2')
-  readonly TAD = this.addInterpretiveIndexable('TAD', '1', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  // Vector computations
-  // Ref SYM VIB-15 - VIB-25
-  readonly ABVAL = this.addInterpretiveUnary('ABVAL', '26')
-  readonly BVSU = this.addInterpretiveIndexable('BVSU', '26', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly DOT = this.addInterpretiveIndexable('DOT', '27', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly MXV = this.addInterpretiveIndexable('MXV', '13', IO(InterpretiveOperandType.Address, false, true, false, true, true))
-  readonly UNIT = this.addInterpretiveUnary('UNIT', '24')
-  readonly VAD = this.addInterpretiveIndexable('VAD', '24', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly VCOMP = this.addInterpretiveUnary('VCOMP', '20')
-  readonly VDEF = this.addInterpretiveUnary('VDEF', '22')
-  readonly VPROJ = this.addInterpretiveIndexable('VPROJ', '31', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly VSQ = this.addInterpretiveUnary('VSQ', '30')
-  readonly VSU = this.addInterpretiveIndexable('VSU', '25', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly VXM = this.addInterpretiveIndexable('VXM', '16', IO(InterpretiveOperandType.Address, false, true, false, true, true))
-  readonly VXSC = this.addInterpretiveIndexable('VXSC', '3', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly VXV = this.addInterpretiveIndexable('VXV', '30', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly VSC = this.addInterpretiveIndexable('V/SC', '7', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  // Shifting operations
-  // Ref SYM VIB-26 - VIB-34
-  readonly NORM = this.addInterpretiveIndexable('NORM', '17', IO(InterpretiveOperandType.Address, false, true, false, true, false))
-  readonly SLC = this.alias(this.NORM, 'SLC')
-  readonly SL = this.addInterpretiveShift('SL', '0', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
-  readonly SL1 = this.addInterpretiveUnary('SL1', '5')
-  readonly SL2 = this.addInterpretiveUnary('SL2', '15')
-  readonly SL3 = this.addInterpretiveUnary('SL3', '25')
-  readonly SL4 = this.addInterpretiveUnary('SL4', '35')
-  readonly SLR = this.addInterpretiveShift('SLR', '2', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
-  readonly SL1R = this.addInterpretiveUnary('SL1R', '1')
-  readonly SL2R = this.addInterpretiveUnary('SL2R', '11')
-  readonly SL3R = this.addInterpretiveUnary('SL3R', '21')
-  readonly SL4R = this.addInterpretiveUnary('SL4R', '31')
-  readonly SR = this.addInterpretiveShift('SR', '1', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
-  readonly SR1 = this.addInterpretiveUnary('SR1', '7')
-  readonly SR2 = this.addInterpretiveUnary('SR2', '17')
-  readonly SR3 = this.addInterpretiveUnary('SR3', '27')
-  readonly SR4 = this.addInterpretiveUnary('SR4', '37')
-  readonly SRR = this.addInterpretiveShift('SRR', '3', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
-  readonly SR1R = this.addInterpretiveUnary('SR1R', '3')
-  readonly SR2R = this.addInterpretiveUnary('SR2R', '13')
-  readonly SR3R = this.addInterpretiveUnary('SR3R', '23')
-  readonly SR4R = this.addInterpretiveUnary('SR4R', '33')
-  readonly VSL = this.addInterpretiveShift('VSL', '0', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
-  readonly VSL1 = this.addInterpretiveUnary('VSL1', '1')
-  readonly VSL2 = this.addInterpretiveUnary('VSL2', '5')
-  readonly VSL3 = this.addInterpretiveUnary('VSL3', '11')
-  readonly VSL4 = this.addInterpretiveUnary('VSL4', '15')
-  readonly VSL5 = this.addInterpretiveUnary('VSL5', '21')
-  readonly VSL6 = this.addInterpretiveUnary('VSL6', '25')
-  readonly VSL7 = this.addInterpretiveUnary('VSL7', '31')
-  readonly VSL8 = this.addInterpretiveUnary('VSL8', '35')
-  readonly VSR = this.addInterpretiveShift('VSR', '1', IO(InterpretiveOperandType.Constant, false, true, false, false, false))
-  readonly VSR1 = this.addInterpretiveUnary('VSR1', '3')
-  readonly VSR2 = this.addInterpretiveUnary('VSR2', '7')
-  readonly VSR3 = this.addInterpretiveUnary('VSR3', '13')
-  readonly VSR4 = this.addInterpretiveUnary('VSR4', '17')
-  readonly VSR5 = this.addInterpretiveUnary('VSR5', '23')
-  readonly VSR6 = this.addInterpretiveUnary('VSR6', '27')
-  readonly VSR7 = this.addInterpretiveUnary('VSR7', '33')
-  readonly VSR8 = this.addInterpretiveUnary('VSR8', '37')
-  // Transmission operations
-  // Ref SYM VIB-35 - VIB-40
-  readonly DLOAD = this.addInterpretiveIndexable('DLOAD', '6', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  // readonly ITA = this.addInterpretiveMisc('ITA', 'XX', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  // readonly STQ = this.alias(this.ITA, 'STQ')
-  readonly PDDL = this.addInterpretiveIndexable('PDDL', '12', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly PDVL = this.addInterpretiveIndexable('PDVL', '14', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly PUSH = this.addInterpretiveUnary('PUSH', '36')
-  readonly SETPD = this.addInterpretiveIndexable('SETPD', '37', IO(InterpretiveOperandType.Constant, true, false, false, false, false))
-  readonly SLOAD = this.addInterpretiveIndexable('SLOAD', '10', IO(InterpretiveOperandType.Address, false, true, false, true, true))
-  readonly SSP = this.addInterpretiveIndexable('SSP', '11', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly STADR = this.addInterpretiveUnaryRhs('STADR', '32')
-  // readonly STCALL = this.addInterpretiveStore('STCALL', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  // Store indexing is a holdover from BLK2 - implicit based on the operand structure of its only IAW.
-  // The appropriate store ts code instruction will be chosen by the parser based on whether its IAW is indexed or not.
-  // All store instruction operands but STCALL are marked as indexable, however, since that affects how they are encoded.
-  readonly STORE = this.addInterpretiveStore('STORE', '0', IO(InterpretiveOperandType.Address, false, true, false, true, false))
-  readonly STORE_INDEX_1 = this.createInterpretiveStore('STORE', '1', IO(InterpretiveOperandType.Address, false, true, false, true, false))
-  readonly STORE_INDEX_2 = this.createInterpretiveStore('STORE', '2', IO(InterpretiveOperandType.Address, false, true, false, true, false))
-  // readonly STODL = this.addInterpretiveStore('STODL', 'XX', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  // readonly STOVL = this.addInterpretiveStore('STOVL', 'XX', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly TLOAD = this.addInterpretiveIndexable('TLOAD', '5', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly VLOAD = this.addInterpretiveIndexable('VLOAD', '0', IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  // Control operations
-  // Ref SYM VIB-41 - VIB-45
-  // readonly BHIZ = this.addInterpretiveMisc('BHIZ', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BMN = this.addInterpretiveMisc('BMN', '27', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BOV = this.addInterpretiveMisc('BOV', '37', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BOVB = this.addInterpretiveMisc('BOVB', '36', IO(InterpretiveOperandType.Address, false, false, false, false, true))
-  readonly BPL = this.addInterpretiveMisc('BPL', '26', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BZE = this.addInterpretiveMisc('BZE', '24', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  // readonly CALL = this.addInterpretiveMiscRhs('CALL', 'XX', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  // readonly CALRB = this.alias(this.CALL, 'CALRB')
-  readonly CCALL = this.addInterpretiveIndexableRhs('CCALL', '15', IO(InterpretiveOperandType.Address, true, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, true))
-  readonly CCLRB = this.alias(this.CCALL, 'CCLRB')
-  readonly CGOTO = this.addInterpretiveIndexableRhs('CGOTO', '4', IO(InterpretiveOperandType.Address, true, true, false, true, false), IO(InterpretiveOperandType.Constant, false, false, false, false, true))
-  readonly EXIT = this.addInterpretiveUnaryRhs('EXIT', '0')
-  readonly GOTO = this.addInterpretiveMiscRhs('GOTO', '25', IO(InterpretiveOperandType.Address, false, false, false, true, true))
-  // readonly RTB = this.addInterpretiveMisc('RTB', 'XX', IO(InterpretiveOperandType.Address, false, false, false, false, true))
-  readonly RVQ = this.addInterpretiveUnaryRhs('RVQ', '34')
-  readonly ITCQ = this.alias(this.RVQ, 'ITCQ')
-  // Index register oriented operations
-  // Ref SYM VIB-46 - VIB-49
-  readonly AXC1 = this.addInterpretiveMisc('AXC,1', '3', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly AXC2 = this.addInterpretiveMisc('AXC,2', '2', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly AXT1 = this.addInterpretiveMisc('AXT,1', '1', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly AXT2 = this.addInterpretiveMisc('AXT,2', '0', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly INCR1 = this.addInterpretiveMisc('INCR,1', '15', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly INCR2 = this.addInterpretiveMisc('INCR,2', '14', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly LXA1 = this.addInterpretiveMisc('LXA,1', '5', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly LXA2 = this.addInterpretiveMisc('LXA,2', '4', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly LXC1 = this.addInterpretiveMisc('LXC,1', '7', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly LXC2 = this.addInterpretiveMisc('LXC,2', '6', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly SXA1 = this.addInterpretiveMisc('SXA,1', '11', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly SXA2 = this.addInterpretiveMisc('SXA,2', '10', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly TIX1 = this.addInterpretiveMisc('TIX,1', '17', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly TIX2 = this.addInterpretiveMisc('TIX,2', '16', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly XAD1 = this.addInterpretiveMisc('XAD,1', '21', IO(InterpretiveOperandType.Address, false, false, false, true, true))
-  readonly XAD2 = this.addInterpretiveMisc('XAD,2', '20', IO(InterpretiveOperandType.Address, false, false, false, true, true))
-  readonly XCHX1 = this.addInterpretiveMisc('XCHX,1', '13', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly XCHX2 = this.addInterpretiveMisc('XCHX,2', '12', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly XSU1 = this.addInterpretiveMisc('XSU,1', '23', IO(InterpretiveOperandType.Address, false, false, false, true, true))
-  readonly XSU2 = this.addInterpretiveMisc('XSU,2', '22', IO(InterpretiveOperandType.Address, false, false, false, true, true))
-  // Logic bit operations
-  // Ref SYM VIB-50 - VIB-54
-  readonly BOF = this.addInterpretiveLogical('BOF', '16', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BOFF = this.alias(this.BOF, 'BOFF')
-  readonly BOFCLR = this.addInterpretiveLogical('BOFCLR', '12', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BOFINV = this.addInterpretiveLogical('BOFINV', '6', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BOFSET = this.addInterpretiveLogical('BOFSET', '2', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BON = this.addInterpretiveLogical('BON', '14', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BONCLR = this.addInterpretiveLogical('BONCLR', '10', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BONINV = this.addInterpretiveLogical('BONINV', '4', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly BONSET = this.addInterpretiveLogical('BONSET', '0', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly CLEAR = this.addInterpretiveLogical('CLEAR', '13', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly CLR = this.alias(this.CLEAR, 'CLR')
-  readonly CLRGO = this.addInterpretiveLogical('CLRGO', '11', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly INVERT = this.addInterpretiveLogical('INVERT', '7', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly INV = this.alias(this.INVERT, 'INV')
-  readonly INVGO = this.addInterpretiveLogical('INVGO', '5', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly SET = this.addInterpretiveLogical('SET', '3', IO(InterpretiveOperandType.Constant, false, false, false, false, false))
-  readonly SETGO = this.addInterpretiveLogical('SETGO', '1', IO(InterpretiveOperandType.Constant, false, false, false, false, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+  checkExtendedIndex (op: Operation, extended: boolean): Operation {
+    return extended && op === this.INDEX ? this.EXTENDED_INDEX : op
+  }
+
+  isIndex (op: Operation): boolean {
+    return op === this.INDEX || op === this.EXTENDED_INDEX
+  }
+
+  isExtend (op: Operation): boolean {
+    return op === this.EXTEND || op === this.EXTENDED_INDEX
+  }
 }
 
-class Blk2Operations extends Operations {
-  // Ref MISCJUMP table in LIST_PROCESSING_INTERPRETER for Aurora 12 vs same table in INTERPRETER for later code bases.
-  // CALL/ITA and RTB/BHIZ are swapped in Aurora 12
-  readonly CALL = this.addInterpretiveMiscRhs('CALL', '30', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly CALRB = this.alias(this.CALL, 'CALRB')
-  readonly ITA = this.addInterpretiveMisc('ITA', '31', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly STQ = this.alias(this.ITA, 'STQ')
-  readonly RTB = this.addInterpretiveMisc('RTB', '32', IO(InterpretiveOperandType.Address, false, false, false, false, true))
-  readonly BHIZ = this.addInterpretiveMisc('BHIZ', '33', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+class Blk2Operations extends Block2Operations {
+  private readonly STCALL: Interpretive
+  private readonly STODL_3: Interpretive
+  private readonly STODLS: Interpretive[]
+  private readonly STOVL_11: Interpretive
+  private readonly STOVLS: Interpretive[]
 
-  // Ref BTM p2-10 for BLK2 specific store format
-  readonly STCALL = this.addInterpretiveStore('STCALL', '17', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  // This is returned for a lookup of 'STODL'. The parser will call checkIndexedStore and storeFirstWordIndexed to adjust it.
-  readonly STODL_3 = this.addInterpretiveStore('STODL', '3', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly STODLS = [
-    // Not indexed
-    this.STODL_3,
-    // Indexed on IAW1,X1, IAW2 not indexed
-    this.createInterpretiveStore('STODL', '4', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X2, IAW2 not indexed
-    this.createInterpretiveStore('STODL', '5', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // IAW1 not indexed, indexed on IAW2
-    this.createInterpretiveStore('STODL', '6', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X1 and IAW2
-    this.createInterpretiveStore('STODL', '7', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X2 and IAW2
-    this.createInterpretiveStore('STODL', '10', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  ]
+  constructor () {
+    super()
 
-  // This is returned for a lookup of 'STOVL'. The parser will call checkIndexedStore and storeFirstWordIndexed to adjust it.
-  readonly STOVL_11 = this.addInterpretiveStore('STOVL', '11', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly STOVLS = [
-    // Not indexed
-    this.STOVL_11,
-    // Indexed on IAW1,X1, IAW2 not indexed
-    this.createInterpretiveStore('STOVL', '12', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X2, IAW2 not indexed
-    this.createInterpretiveStore('STOVL', '13', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // IAW1 not indexed, indexed on IAW2
-    this.createInterpretiveStore('STOVL', '14', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X1 and IAW2
-    this.createInterpretiveStore('STOVL', '15', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
-    // Indexed on IAW1,X2 and IAW2
-    this.createInterpretiveStore('STOVL', '16', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  ]
+    // Ref MISCJUMP table in LIST_PROCESSING_INTERPRETER for Aurora 12 vs same table in INTERPRETER for later code bases.
+    // CALL/ITA and RTB/BHIZ are swapped in Aurora 12
+    this.addInterpretiveMiscRhs('CALL', '30', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.alias('CALL', 'CALRB')
+    this.addInterpretiveMisc('ITA', '31', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.alias('ITA', 'STQ')
+    this.addInterpretiveMisc('RTB', '32', IO(InterpretiveOperandType.Address, false, false, false, false, true))
+    this.addInterpretiveMisc('BHIZ', '33', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+
+    // Ref BTM p2-10 for BLK2 specific store format
+    this.STCALL = this.addInterpretiveStore('STCALL', '17', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    // This is returned for a lookup of 'STODL'. The parser will call checkIndexedStore and storeFirstWordIndexed to adjust it.
+    this.STODL_3 = this.addInterpretiveStore('STODL', '3', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.STODLS = [
+      // Not indexed
+      this.STODL_3,
+      // Indexed on IAW1,X1, IAW2 not indexed
+      this.createInterpretiveStore('STODL', '4', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // Indexed on IAW1,X2, IAW2 not indexed
+      this.createInterpretiveStore('STODL', '5', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // IAW1 not indexed, indexed on IAW2
+      this.createInterpretiveStore('STODL', '6', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // Indexed on IAW1,X1 and IAW2
+      this.createInterpretiveStore('STODL', '7', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // Indexed on IAW1,X2 and IAW2
+      this.createInterpretiveStore('STODL', '10', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    ]
+
+    // This is returned for a lookup of 'STOVL'. The parser will call checkIndexedStore and storeFirstWordIndexed to adjust it.
+    this.STOVL_11 = this.addInterpretiveStore('STOVL', '11', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.STOVLS = [
+      // Not indexed
+      this.STOVL_11,
+      // Indexed on IAW1,X1, IAW2 not indexed
+      this.createInterpretiveStore('STOVL', '12', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // Indexed on IAW1,X2, IAW2 not indexed
+      this.createInterpretiveStore('STOVL', '13', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // IAW1 not indexed, indexed on IAW2
+      this.createInterpretiveStore('STOVL', '14', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // Indexed on IAW1,X1 and IAW2
+      this.createInterpretiveStore('STOVL', '15', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true)),
+      // Indexed on IAW1,X2 and IAW2
+      this.createInterpretiveStore('STOVL', '16', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    ]
+  }
 
   checkIndexedStore (op: Operation, indexed: boolean): Operation {
     const offset = indexed ? 3 : 0
@@ -914,20 +1264,29 @@ class Blk2Operations extends Operations {
   }
 }
 
-class AgcOperations extends Operations {
-  // See note in Blk2Operations
-  readonly RTB = this.addInterpretiveMisc('RTB', '30', IO(InterpretiveOperandType.Address, false, false, false, false, true))
-  readonly BHIZ = this.addInterpretiveMisc('BHIZ', '31', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly CALL = this.addInterpretiveMiscRhs('CALL', '32', IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly CALRB = this.alias(this.CALL, 'CALRB')
-  readonly ITA = this.addInterpretiveMisc('ITA', '33', IO(InterpretiveOperandType.Address, false, false, false, true, false))
-  readonly STQ = this.alias(this.ITA, 'STQ')
+class AgcOperations extends Block2Operations {
+  private readonly STODL: Interpretive
+  private readonly STODL_INDEXED: Interpretive
+  private readonly STOVL: Interpretive
+  private readonly STOVL_INDEXED: Interpretive
 
-  readonly STCALL = this.addInterpretiveStore('STCALL', '7', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
-  readonly STODL = this.addInterpretiveStore('STODL', '3', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly STODL_INDEXED = this.createInterpretiveStore('STODL', '4', IO(InterpretiveOperandType.Address, true, false, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly STOVL = this.addInterpretiveStore('STOVL', '5', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
-  readonly STOVL_INDEXED = this.createInterpretiveStore('STOVL', '6', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+  constructor () {
+    super()
+
+    // See note in Blk2Operations
+    this.addInterpretiveMisc('RTB', '30', IO(InterpretiveOperandType.Address, false, false, false, false, true))
+    this.addInterpretiveMisc('BHIZ', '31', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.addInterpretiveMiscRhs('CALL', '32', IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.alias('CALL', 'CALRB')
+    this.addInterpretiveMisc('ITA', '33', IO(InterpretiveOperandType.Address, false, false, false, true, false))
+    this.alias('ITA', 'STQ')
+
+    this.addInterpretiveStore('STCALL', '7', IO(InterpretiveOperandType.Address, false, false, true, true, false), IO(InterpretiveOperandType.Address, false, false, true, true, true))
+    this.STODL = this.addInterpretiveStore('STODL', '3', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.STODL_INDEXED = this.createInterpretiveStore('STODL', '4', IO(InterpretiveOperandType.Address, true, false, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.STOVL = this.addInterpretiveStore('STOVL', '5', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+    this.STOVL_INDEXED = this.createInterpretiveStore('STOVL', '6', IO(InterpretiveOperandType.Address, false, true, false, true, false), IO(InterpretiveOperandType.Address, true, true, false, true, true))
+  }
 
   checkIndexedStore (op: Operation, indexed: boolean): Operation {
     if (indexed) {

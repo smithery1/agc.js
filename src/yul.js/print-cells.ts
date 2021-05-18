@@ -4,8 +4,8 @@ import * as parse from './parser'
 import { Pass2Output } from './pass2'
 import { PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
+import * as targets from './targets'
 import { parity } from './util'
-import * as versions from './versions'
 
 const MEM_SPECIAL = 'SPECIAL OR NONEXISTENT MEMORY'
 const MEM_AVAIL = 'AVAILABLE'
@@ -40,12 +40,12 @@ const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
 export function printMemorySummary (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const def = context.options.version.isYul() ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
+  const def = context.options.target.isYul() ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
 
   printTable(context, def, entries())
 
   function * entries (): Generator<string[]> {
-    const yul = context.options.version.isYul()
+    const yul = context.options.target.isYul()
     const ranges = memory.memoryRanges()
     let i = 0
 
@@ -74,10 +74,10 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
     function combineRanges (start: mem.MemoryRange, end: mem.MemoryRange): mem.MemoryRange {
       switch (start.type) {
         case mem.MemoryType.Hardware:
-          return { min: start.min, max: end.max - 1, type: mem.MemoryType.Special_Erasable }
+          return { min: start.min, max: end.max, type: mem.MemoryType.Special_Erasable }
 
         case mem.MemoryType.Unswitched_Banked_Erasable:
-          return { min: start.min - 1, max: end.max, type: start.type }
+          return { min: start.min, max: end.max, type: start.type }
 
         default:
           return { min: start.min, max: end.max, type: start.type }
@@ -138,10 +138,10 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
     function adjustEnd (max: number): number {
       // Y1966 and earlier do not consider the checksum cell "used"
       const maxCell = cells[max]
-      if (context.options.version.isAtMost(versions.Enum.Y1966)
+      if (context.options.target.isAtMost(targets.Enum.Y1966)
         && maxCell !== undefined
         && parse.isClerical(maxCell.definition.card)
-        && maxCell.definition.card.operation.operation === context.operations.BNKSUM) {
+        && maxCell.definition.card.operation.operation === context.operations.operation('BNKSUM')) {
         return max - 1
       }
       return max
@@ -189,7 +189,7 @@ const PARAGRAPHS_HEADER = 'PARAGRAPHS GENERATED FOR THIS ASSEMBLY; ADDRESS LIMIT
 export function printParagraphs (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const isYul = context.options.version.isYul()
+  const isYul = context.options.target.isYul()
   const rowsPerPage = isYul ? 50 : 45
 
   const header = PARAGRAPHS_HEADER + (isYul ? '.' : '')
@@ -270,7 +270,7 @@ const OCTAL_LISTING_COLUMNS = {
 export function printOctalListing (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const isYul = context.options.version.isYul()
+  const isYul = context.options.target.isYul()
   const ofFor = isYul ? 'OF' : 'FOR'
   const punct = isYul ? ';' : ','
   const period = isYul ? '.' : ''
@@ -348,7 +348,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
       let type = ''
       const card = cell.definition.card
       if (parse.isAddressConstant(card)) {
-        if (card.operation.operation === context.operations.P) {
+        if (card.operation.operation === context.operations.operation('P')) {
           type = 'I:'
         } else {
           type = 'C:'
@@ -356,7 +356,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
       } else if (parse.isNumericConstant(card)) {
         type = 'C:'
       } else if (parse.isClerical(card)) {
-        if (card.operation.operation === context.operations.BNKSUM) {
+        if (card.operation.operation === context.operations.operation('BNKSUM')) {
           type = 'CKSM'
         } else {
           type = 'C:'

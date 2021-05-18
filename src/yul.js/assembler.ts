@@ -25,7 +25,13 @@ import { PrintContext, printCuss, PrinterContext } from './printer-utils'
  *     MIT Instrumentation Laboratory, Cambridge, MA,
  *     E-2052, January 1967,
  *     http://www.ibiblio.org/apollo/NARA-SW/E-2052.pdf.
-* - SYM:
+ * - SUNRISE:
+ *     R. Battin, R. Crisp, A. Green, T. J. Lawton, C. A. Muntz, J. Rocchio, and E. Smally
+ *     "THE'COMPLEAT SUNRISE"
+ *     MIT, Cambridge 39, MA,
+ *     SUNRISE 33 - NASA DWG #121102, September 1964,
+ *     http://www.ibiblio.org/apollo/hrst/archive/1721.pdf
+ * - SYM:
  *     "Apollo Guidance Program Symbolic Listing Information for Block 2",
  *     MIT Instrumentation Laboratory, Cambridge, MA,
  *     NAS 9-8166, November 20, 1969,
@@ -36,7 +42,7 @@ import { PrintContext, printCuss, PrinterContext } from './printer-utils'
  *     FR-2-113, December, 5, 1963,
  *     https://www.ibiblio.org/apollo/Documents/agcis_13_yul.pdf.
  * - yaYUL:
- *     R\. Burkey,
+ *     R. Burkey,
  *     "Programmer's Manual: Block 2 AGC Assembly Language",
  *     "General Formatting Information",
  *     https://virtualagc.github.io/virtualagc/assembly_language_manual.html#Formatting.
@@ -92,7 +98,7 @@ export default class Assembler {
     const program = getProgram(options.file)
     const user = compat.username()
     const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
-    const charset = getCharset(options.version.isYul() ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
+    const charset = getCharset(options.target.isYul() ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
     const context: PrintContext = {
       options,
       operations,

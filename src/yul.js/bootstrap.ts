@@ -1,5 +1,5 @@
 import Assembler from './assembler'
-import { Version } from './versions'
+import { Target } from './targets'
 
 export enum EolSection {
   Listing,
@@ -21,7 +21,7 @@ export enum EolSection {
 
 export interface Options {
   file: string
-  version: Version
+  target: Target
   eol: EolSection[]
   formatted: boolean
 }

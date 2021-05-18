@@ -9,11 +9,12 @@ number of 1 and a file of MAIN.agc (or whatever is given on the command line)
 and reads source files in the order they are referenced. Each file is rewritten
 with updated page numbers to a temporary one with a ".renumber" extention in
 the same directory. When the complete input file has been processed, it is
-replaced with the temporary file if there where page number changes. Otherwise
+replaced with the temporary file if there were page number changes. Otherwise
 the temporary file is deleted.
 
 Each line read from the input is written to the temporary output file. The line
-is written unchanged except when a page renumbering occurs as described below.
+is written unchanged (but see line endings note below) except when a page
+renumbering occurs as described below.
 
 If a line starts with a dollar sign ($), it is considered an "insertion" line.
 The rest of the line is assumed to reference a file in the same directory as

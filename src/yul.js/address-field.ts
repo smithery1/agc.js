@@ -33,9 +33,13 @@ export interface TrueAddress {
   readonly offset: number
 }
 
+export function isOffset (value: any): value is Offset {
+  return value !== undefined && typeof value !== 'string' && typeof value !== 'number' && 'value' in value
+}
+
 const DECIMAL_INTEGER_EXPR = /^[0-9]+D?$/
 const OCTAL_INTEGER_EXPR = /^[0-7]+$/
-const ADDRESS_FIELD_EXPR = /^([^\s]+)(?:\s+([+-]\d+D?))?$/
+const ADDRESS_FIELD_EXPR = /^([^\s]+)(?:\s+((?:\+\s*|-)\d+D?))?$/
 const RANGE_FIELD_EXPR = /^(\d+D?)\s+-\s+(\d+D?)$/
 const INDEXED_FIELD_EXPR = /^([^\s,]+)(?:\s+([+-]\d+D?))?(?:,([12]))?$/
 
@@ -131,7 +135,7 @@ export function parse (
       parseCusses.add(cusses.Cuss3D)
     }
 
-    const parsed = parseUnsigned(signed.substring(1), MAX_15_BITS, parseCusses)
+    const parsed = parseUnsigned(signed.substring(1).trimLeft(), MAX_15_BITS, parseCusses)
     if (parsed === undefined) {
       return undefined
     }
@@ -150,8 +154,8 @@ export function parse (
       } else {
         // Ref YUL, 13-114. "If a numeric subfield contains character 8 or 9 but no D, it is considered to represent a
         // decimal integer, but a complaint is printed."
-        // No YUL or GAP scans have such a problem so far, but SuperJob has a few of these in its scans.
-        if (!options.version.isRaytheon()) {
+        // Present on Luminary069 p1429 and in several places in SuperJob.
+        if (!options.target.isRaytheon()) {
           parseCusses.add(cusses.Cuss21)
         }
         value = Number.parseInt(input.substring(0, input.length), 10)
