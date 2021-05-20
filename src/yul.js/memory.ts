@@ -1,4 +1,4 @@
-import { Options } from './bootstrap'
+import { Options } from './options'
 
 /**
  * Information about an address range; min and max are inclusive true addresses.
@@ -161,17 +161,17 @@ const BLOCK2_FIXED_BANK_04_INDEX = 15
 const BLOCK2_S3_START_INDEX = 35
 
 export function createMemory (options: Options): Memory {
-  if (options.target.isBlock1()) {
+  if (options.source.isBlock1()) {
     return new Block1Memory()
   }
 
   let banks: number
   let nonexistentHighMem: Range | undefined
 
-  if (options.target.isGap()) {
+  if (options.source.isAgc()) {
     banks = 43
     nonexistentHighMem = { min: 0xF000, max: 0xFFFF }
-  } else if (options.target.isBlk2()) {
+  } else if (options.source.isBlk2()) {
     banks = 23
   } else {
     banks = 35

@@ -1,16 +1,15 @@
 import * as field from './address-field'
 import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses, NEGATIVE_ZERO } from './assembly'
-import { Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType, SourceLine } from './lexer'
 import { Bank, Memory, MemoryType } from './memory'
 import * as ops from './operations'
 import { BasicAddressRange } from './operations'
+import { Options, SourceEnum } from './options'
 import * as parse from './parser'
 import { Pass1Output } from './pass1'
 import { Pass2SymbolTable } from './symbol-table'
-import * as targets from './targets'
 
 /**
  * The output from pass 2 assembly.
@@ -120,7 +119,7 @@ export class Pass2Assembler {
 
     this.output.cards.forEach((card) => {
       if (card.lexedLine.sourceLine.source !== prevSource) {
-        if (!this.options.target.isRaytheon() && !this.options.target.isBlk2()) {
+        if (!this.options.source.isRaytheon() && !this.options.source.isBlk2()) {
           this.eBank = 0
         }
         prevSource = card.lexedLine.sourceLine.source
@@ -142,8 +141,8 @@ export class Pass2Assembler {
       this.addCussCounts(card.cusses)
     })
 
-    if (this.options.target.target() === targets.Enum.B1966
-      || this.options.target.target() === targets.Enum.YAGC4) {
+    if (this.options.source.source() === SourceEnum.B1966
+      || this.options.source.source() === SourceEnum.AGC4) {
       this.addToBnkSums()
     }
     this.addBnkSums()
@@ -268,7 +267,7 @@ export class Pass2Assembler {
     }
     const address = resolved.address + (operation.addressBias ?? 0)
 
-    if (this.options.target.isRaytheon()) {
+    if (this.options.source.isRaytheon()) {
       // SuperJob seems to treat numeric subfields, including those defined by =, as an address literal,
       // so just return it.
       if (typeof card.address?.value === 'number') {
@@ -345,7 +344,7 @@ export class Pass2Assembler {
       let highOp: number
       if (card.lhs === undefined) {
         lowOp = opCode(card.rhs as parse.OperationField<ops.Interpretive>, this.options)
-        highOp = this.options.target.isBlock1() ? 1 : 0
+        highOp = this.options.source.isBlock1() ? 1 : 0
       } else {
         lowOp = opCode(card.lhs, this.options)
         if (parse.isOperationField(card.rhs)) {
@@ -354,7 +353,7 @@ export class Pass2Assembler {
           highOp = (card.rhs as field.AddressField).value as number + 1
         }
       }
-      const raw = this.options.target.isBlock1() ? ((lowOp - 1) << 7) | highOp : highOp << 7 | lowOp
+      const raw = this.options.source.isBlock1() ? ((lowOp - 1) << 7) | highOp : highOp << 7 | lowOp
       this.setCell(raw, 0, true, assembled)
     }
 
@@ -366,7 +365,7 @@ export class Pass2Assembler {
 
       let code = field.operation.opCode + 1
       if (field.indexed) {
-        if (options.target.isBlock1()) {
+        if (options.source.isBlock1()) {
           if (field.operation.operand2 === undefined && field.operation.operand1?.pushDown === true) {
             code += 4
           } else {
@@ -394,13 +393,13 @@ export class Pass2Assembler {
 
     let raw: number
     // Ref BTM p2-10. BLK2 uses a 4 bit op-code and a 10 bit address.
-    if (this.options.target.isBlk2()) {
+    if (this.options.source.isBlk2()) {
       const ts = (lhs.operation.code ?? 0) << 10
       const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
       raw = ts | (bankAndAddress?.address ?? ERROR_WORD)
     // Block1 behaves like the as BLK2 for non-indexed STORE.
     // An index store is similar to other indexed IAWs - the address is shifted and the index added to it.
-    } else if (this.options.target.isBlock1()) {
+    } else if (this.options.source.isBlock1()) {
       const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
       let ts = (lhs.operation.code ?? 0) << 10
       let addressPart = bankAndAddress?.address ?? ERROR_WORD
@@ -424,7 +423,7 @@ export class Pass2Assembler {
 
     const symbol = card.operation.operation.symbol
     if (symbol in this.addressDispatch) {
-      if (this.options.target.isBlock1() && symbol === 'P' && card.address?.value === '-') {
+      if (this.options.source.isBlock1() && symbol === 'P' && card.address?.value === '-') {
         this.setCell(0, 0, true, assembled)
       } else {
         const resolved = this.resolve(card.address, assembled)
@@ -466,7 +465,7 @@ export class Pass2Assembler {
   }
 
   private onCadr (card: parse.AddressConstantCard, resolved: field.TrueAddress, assembled: AssembledCard): void {
-    if (this.options.target.isBlock1()) {
+    if (this.options.source.isBlock1()) {
       if (this.memory.isErasable(this.memory.memoryType(resolved.address))) {
         this.setCell(resolved.address, resolved.offset, card.operation.complemented, assembled)
         return
@@ -520,7 +519,7 @@ export class Pass2Assembler {
       // Ref SYM, VC-2, which referes to BBCON but 2CADR is just a BBCON and a GENADR.
       // A preceding one-shot EBANK= is present in all code bases after Aurora.
       if (ebank === undefined) {
-        if (this.options.target.isBlk2()) {
+        if (this.options.source.isBlk2()) {
           ebank = this.eBank
         } else {
           getCusses(assembled).add(cusses.Cuss58)
@@ -559,7 +558,7 @@ export class Pass2Assembler {
     let ebank = this.oneShotEBank
     // Ref SYM, VC-2 implies a preceding one-shot EBANK= is required, and it is present in all code bases after Aurora.
     if (ebank === undefined) {
-      if (this.options.target.isBlk2()) {
+      if (this.options.source.isBlk2()) {
         ebank = this.eBank
       } else {
         getCusses(assembled).add(cusses.Cuss58)
@@ -648,7 +647,7 @@ export class Pass2Assembler {
     // CC: code from interpretive op, which is (RD: rounded, direction)
     // I: 0 for negative shift, 1 for non-negative shift
     // SSSSSSS: amount of shift
-    const prefix = this.options.target.isBlk2() ? 0 : 0x2000
+    const prefix = this.options.source.isBlk2() ? 0 : 0x2000
     const code = interpretive?.operator.operation.code ?? 0
     const word = prefix | (code << 8) | (shiftAmount + 129)
     this.setCell(word, 0, card.address?.indexRegister === 2, assembled)
@@ -661,7 +660,7 @@ export class Pass2Assembler {
     let word: number
     let complement = false
     const isErasable = this.memory.isErasable(this.memory.memoryType(address))
-    const isBlock1 = this.options.target.isBlock1()
+    const isBlock1 = this.options.source.isBlock1()
 
     if (interpretive?.operand?.type === ops.InterpretiveOperandType.Address) {
       if (isErasable) {
@@ -689,7 +688,7 @@ export class Pass2Assembler {
       }
     } else {
       // Ref SYM, VB-4
-      if (this.options.target.isBlk2() && isErasable) {
+      if (this.options.source.isBlk2() && isErasable) {
         const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
         word = bankAndAddress?.address ?? ERROR_WORD
       } else {
@@ -717,7 +716,7 @@ export class Pass2Assembler {
     // However, there are plenty of stores in low memory and references to other banks without
     // an EBANK= update.
 
-    if (this.options.target.isBlk2()) {
+    if (this.options.source.isBlk2()) {
       const bankAndAddress = this.memory.asSwitchedBankAndAddress(trueAddress)
       return bankAndAddress?.address ?? ERROR_WORD
     }
@@ -728,7 +727,7 @@ export class Pass2Assembler {
     operand: ops.InterpretiveOperand, trueAddress: number, assembled: AssembledCard): number {
     if (!operand.fixedMemory) {
       getCusses(assembled).add(cusses.Cuss37, 'Fixed not allowed')
-    } else if (operand.indexable || this.options.target.isBlock1()) {
+    } else if (operand.indexable || this.options.source.isBlock1()) {
       const fixedAddress = this.memory.asInterpretiveFixedAddress(this.locationCounter, trueAddress)
       if (fixedAddress === undefined) {
         getCusses(assembled).add(
@@ -1004,7 +1003,7 @@ export class Pass2Assembler {
       // Meaning the checksum has the same sign as the sum, including -0 if necessary.
       // This works most of the time, but old code (Sunburst37 (aka YUL 1966) and older) appears to always use a
       // positive bank number.
-      if (sum < 0 && (this.options.target.isLaterThan(targets.Enum.Y1966) || this.options.target.isBlock1())) {
+      if (sum < 0 && !this.options.source.onlyPositiveChecksums()) {
         checksum = -bnkSum.bank - sum
         if (checksum === 0) {
           // Special case for -0

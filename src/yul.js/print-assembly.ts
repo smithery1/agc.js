@@ -5,11 +5,11 @@ import { Cells } from './cells'
 import { LexedLine, LineType } from './lexer'
 import { Memory } from './memory'
 import { InterpretiveType } from './operations'
+import { AssemblerEnum } from './options'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
 import { LINE_LENGTH, PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
-import * as targets from './targets'
 import { parity } from './util'
 
 const COLUMNS = {
@@ -427,7 +427,7 @@ export function printResults (pass2: Pass2Output, context: PrintContext): void {
   let result: string
   let manufacturable = ''
 
-  if (context.options.target.isLaterThan(targets.Enum.B1965)) {
+  if (context.options.assembler.isLaterThan(AssemblerEnum.Y1965)) {
     context.printer.endPage()
   } else if (context.options.formatted) {
     context.printer.printTrailingSeparator()

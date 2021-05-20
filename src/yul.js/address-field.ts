@@ -1,7 +1,7 @@
 import { AssembledCard, getCusses } from './assembly'
-import { Options } from './bootstrap'
 import * as cusses from './cusses'
 import * as ops from './operations'
+import { Options } from './options'
 import { SymbolTable } from './symbol-table'
 import * as utils from './util'
 
@@ -155,7 +155,7 @@ export function parse (
         // Ref YUL, 13-114. "If a numeric subfield contains character 8 or 9 but no D, it is considered to represent a
         // decimal integer, but a complaint is printed."
         // Present on Luminary069 p1429 and in several places in SuperJob.
-        if (!options.target.isRaytheon()) {
+        if (!options.source.isRaytheon()) {
           parseCusses.add(cusses.Cuss21)
         }
         value = Number.parseInt(input.substring(0, input.length), 10)

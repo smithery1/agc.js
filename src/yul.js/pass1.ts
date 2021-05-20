@@ -1,15 +1,14 @@
 import { compat } from '../common/compat'
 import * as field from './address-field'
 import { AssembledCard, getCusses } from './assembly'
-import { Options } from './bootstrap'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType } from './lexer'
 import { Memory, MemoryType } from './memory'
 import { Operations } from './operations'
+import { Options, SourceEnum } from './options'
 import * as parse from './parser'
 import { Pass1SymbolTable, Pass2SymbolTable } from './symbol-table'
-import * as targets from './targets'
 
 /**
  * The output from pass 1 assembly.
@@ -302,11 +301,10 @@ export class Pass1Assembler {
 
       bankNumber = card.address.value
 
-      // The following differing YUL vs GAP behavior for BANK with an operand is empirical
-      // but required to compile Sunburst120.
-      // YUL 67: Behaves like BANK with no operand
+      // The following behavior for BANK with an operand is empirical but required to compile Sunburst120.
+      // AGC 1967: Behaves like BANK with no operand
       // Others: Leaves SBANK unchanged
-      if (this.options.target.target() === targets.Enum.Y1967) {
+      if (this.options.source.source() === SourceEnum.A1967) {
         sBank = this.memory.fixedBankNumberToBank(bankNumber)?.sBank
       }
     }

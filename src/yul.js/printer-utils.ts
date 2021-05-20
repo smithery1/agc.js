@@ -1,9 +1,9 @@
 import { compat } from '../common/compat'
-import { Options } from './bootstrap'
 import { CharSet } from './charset'
 import * as cusses from './cusses'
 import { Memory } from './memory'
 import { Operations } from './operations'
+import { Options } from './options'
 
 export interface PrintContext {
   printer: PrinterContext

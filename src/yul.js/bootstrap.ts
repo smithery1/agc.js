@@ -1,30 +1,5 @@
 import Assembler from './assembler'
-import { Target } from './targets'
-
-export enum EolSection {
-  Listing,
-  ListingWithCusses,
-  Cusses,
-  Symbols,
-  UndefinedSymbols,
-  UnreferencedSymbols,
-  CrossReference,
-  TableSummary,
-  MemorySummary,
-  Count,
-  Paragraphs,
-  OctalListing,
-  OctalCompact,
-  Occupied,
-  Results
-}
-
-export interface Options {
-  file: string
-  target: Target
-  eol: EolSection[]
-  formatted: boolean
-}
+import { EolSection, Options } from './options'
 
 export function asStderrSection (section: EolSection, isStderr: boolean): number {
   return isStderr ? (section | 0x100) : section

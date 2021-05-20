@@ -6,7 +6,7 @@
 // implemented.
 //
 
-import { Options } from './bootstrap'
+import { Options } from './options'
 
 /**
  * The requirements for the presence of field.
@@ -209,10 +209,10 @@ function IO (
  * @returns the Operations instance
  */
 export function createOperations (options: Options): Operations {
-  if (options.target.isBlock1()) {
+  if (options.source.isBlock1()) {
     return new Block1Operations()
   }
-  return options.target.isBlk2() ? new Blk2Operations() : new AgcOperations()
+  return options.source.isBlk2() ? new Blk2Operations() : new AgcOperations()
 }
 
 // Ref SYM, VIB-50 prefix 2, selection code 34

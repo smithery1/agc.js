@@ -1,10 +1,10 @@
 import { Cell } from './cells'
 import * as mem from './memory'
+import { AssemblerEnum } from './options'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
 import { PrintContext } from './printer-utils'
 import { printTable, TableData } from './table-printer'
-import * as targets from './targets'
 import { parity } from './util'
 
 const MEM_SPECIAL = 'SPECIAL OR NONEXISTENT MEMORY'
@@ -40,12 +40,12 @@ const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
 export function printMemorySummary (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const def = context.options.target.isYul() ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
+  const def = context.options.assembler.isYul() ? MEMORY_SUMMARY_YUL_TABLE_DATA : MEMORY_SUMMARY_GAP_TABLE_DATA
 
   printTable(context, def, entries())
 
   function * entries (): Generator<string[]> {
-    const yul = context.options.target.isYul()
+    const yul = context.options.assembler.isYul()
     const ranges = memory.memoryRanges()
     let i = 0
 
@@ -136,9 +136,9 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
     }
 
     function adjustEnd (max: number): number {
-      // Y1966 and earlier do not consider the checksum cell "used"
+      // D1966 and earlier do not consider the checksum cell "used"
       const maxCell = cells[max]
-      if (context.options.target.isAtMost(targets.Enum.Y1966)
+      if (context.options.assembler.isAtMost(AssemblerEnum.D1966)
         && maxCell !== undefined
         && parse.isClerical(maxCell.definition.card)
         && maxCell.definition.card.operation.operation === context.operations.operation('BNKSUM')) {
@@ -189,7 +189,7 @@ const PARAGRAPHS_HEADER = 'PARAGRAPHS GENERATED FOR THIS ASSEMBLY; ADDRESS LIMIT
 export function printParagraphs (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const isYul = context.options.target.isYul()
+  const isYul = context.options.assembler.isYul()
   const rowsPerPage = isYul ? 50 : 45
 
   const header = PARAGRAPHS_HEADER + (isYul ? '.' : '')
@@ -270,7 +270,7 @@ const OCTAL_LISTING_COLUMNS = {
 export function printOctalListing (pass2: Pass2Output, context: PrintContext): void {
   const cells = pass2.cells.getCells()
   const memory = context.memory
-  const isYul = context.options.target.isYul()
+  const isYul = context.options.assembler.isYul()
   const ofFor = isYul ? 'OF' : 'FOR'
   const punct = isYul ? ';' : ','
   const period = isYul ? '.' : ''

@@ -1,11 +1,11 @@
 import { InputStream } from '../common/compat'
 import * as field from './address-field'
-import { Options } from './bootstrap'
 import * as cusses from './cusses'
 import { lex, LexedLine, LineType } from './lexer'
 import { Memory, MemoryType } from './memory'
 import { lexNumeric } from './numeric-card'
 import * as ops from './operations'
+import { Options } from './options'
 import * as utils from './util'
 
 /**
@@ -419,7 +419,7 @@ export class Parser {
         } else {
           const indexed = pushDown.operator.indexed && pushDown.operand?.indexable === true
           const indexedNecessity = indexed ? ops.Necessity.Required : ops.Necessity.Never
-          if (this.options.target.isBlock1() && operand === '-') {
+          if (this.options.source.isBlock1() && operand === '-') {
             if (indexed) {
               this.cardCusses.add(cusses.Cuss17)
             }
@@ -427,7 +427,7 @@ export class Parser {
           } else {
             parsed = field.parse(operand, indexedNecessity, false, this.options, this.cardCusses)
             const value = parsed?.value
-            if (this.options.target.isBlock1() && field.isOffset(value) && value.value < 0) {
+            if (this.options.source.isBlock1() && field.isOffset(value) && value.value < 0) {
               // Hacky workaround for yaYUL-formatted source that moves the '-' from column 17 to the start of the
               // address field.
               parsed = { value: -value.value }
@@ -498,7 +498,7 @@ export class Parser {
     if (operand !== undefined) {
       if (input.parsedOp.op === this.operations.operation('SUBRO')) {
         parsed = { value: operand }
-      } else if (input.parsedOp.op === this.operations.operation('SETLOC') && this.options.target.isRaytheon()) {
+      } else if (input.parsedOp.op === this.operations.operation('SETLOC') && this.options.source.isRaytheon()) {
         parsed = this.parseSuperSetloc(operand)
       } else {
         const rangeAllowed = input.parsedOp.op === this.operations.operation('ERASE')
@@ -608,7 +608,7 @@ export class Parser {
     if (input.parsedOp.op.isExtended) {
       if (!this.isExtended) {
         // The Block 1 extended INDEX does not require EXTEND
-        if (!this.options.target.isBlock1() || !this.lastWasIndex) {
+        if (!this.options.source.isBlock1() || !this.lastWasIndex) {
           this.cardCusses.add(cusses.Cuss43)
         }
       }
@@ -646,7 +646,7 @@ export class Parser {
   private parseInterpretiveInstruction (input: LineOp<ops.Interpretive>): ParsedLine {
     this.verifyNotExtended()
 
-    const isBlock1 = this.options.target.isBlock1()
+    const isBlock1 = this.options.source.isBlock1()
 
     if (input.parsedOp.op.subType === ops.InterpretiveType.Store) {
       this.popPushUp()
@@ -780,7 +780,7 @@ export class Parser {
   }
 
   private addInterpretiveOperands (...ops: Array<OperationField<ops.Interpretive>>): void {
-    if (this.options.target.isBlock1()) {
+    if (this.options.source.isBlock1()) {
       ops.forEach(op => {
         this.pushInterpretiveOperand(op, op.operation.operand1)
         this.pushInterpretiveOperand(op, op.operation.operand2)
@@ -797,7 +797,7 @@ export class Parser {
     op: OperationField<ops.Interpretive>, operand: ops.InterpretiveOperand | undefined): void {
     if (operand !== undefined) {
       this.interpretiveOperands.push({ operator: op, operand })
-    } else if (this.options.target.isBlock1()
+    } else if (this.options.source.isBlock1()
       && (op.operation === this.operations.operation('NOLOD')
           || op.operation === this.operations.operation('LODON'))) {
       this.interpretiveOperands.push({ operator: op })
@@ -809,7 +809,7 @@ export class Parser {
     let count = op.words
     const allowIndexed = op === this.operations.operation('P')
 
-    if (this.options.target.isBlock1()) {
+    if (this.options.source.isBlock1()) {
       while (count > 0) {
         const popped = this.interpretiveOperands.pop()
         if (popped === undefined) {
