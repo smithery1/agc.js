@@ -1,4 +1,4 @@
-import { PrintContext } from './printer-utils'
+import { PrintContext } from './printer'
 
 export interface TableData<Entry> {
   leadGap?: number
@@ -71,12 +71,15 @@ export function printTable<Entry> (
   } else {
     if (currentRow > 0 || currentCol > 0) {
       const maxRow = currentCol === 0 ? currentRow : rowsPerPage
+      for (let i = currentRow; i < maxRow; i++) {
+        output[i][currentCol] = ''
+      }
       while (++currentCol < columns) {
         for (let i = 0; i < maxRow; i++) {
           output[i][currentCol] = ''
         }
       }
-      printPage(currentRow)
+      printPage(maxRow)
     }
   }
 

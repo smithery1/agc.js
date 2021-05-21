@@ -13,14 +13,16 @@ function parseOptions (argv: string[]): opts.Options | undefined {
   const options: {
     file?: string
     source: opts.Source
-    assembler?: opts.Assembler
-    eol: opts.EolSection[]
+    assembler: opts.Assembler
+    eol: opts.OutputSection[]
     formatted: boolean
   } = {
     source: opts.createSource(opts.SourceEnum.AGC),
+    assembler: opts.createMatchingAssembler(opts.SourceEnum.AGC),
     eol: [],
     formatted: true
   }
+  let assemblerSet = false
   let i = 2
 
   while (i < argv.length) {
@@ -30,13 +32,6 @@ function parseOptions (argv: string[]): opts.Options | undefined {
       case '--help':
         usage(app)
         return undefined
-
-      case '-e':
-      case '--eol':
-        if (!parseEol()) {
-          return undefined
-        }
-        break
 
       case '-u':
       case '--unformatted':
@@ -58,7 +53,11 @@ function parseOptions (argv: string[]): opts.Options | undefined {
         break
 
       default:
-        if (options.file === undefined) {
+        if (isOutputSection(option)) {
+          if (!parseOutputSection(option)) {
+            return undefined
+          }
+        } else if (options.file === undefined) {
           options.file = option
         } else {
           console.error(`Unknown option '${option}'`)
@@ -73,12 +72,8 @@ function parseOptions (argv: string[]): opts.Options | undefined {
   }
 
   if (options.eol.length === 0) {
-    options.eol.push(boot.asStderrSection(opts.EolSection.Cusses, true))
-    options.eol.push(boot.asStderrSection(opts.EolSection.Results, false))
-  }
-
-  if (options.assembler === undefined) {
-    options.assembler = opts.createMatchingAssembler(options.source.source())
+    options.eol.push(boot.asStderrSection(opts.OutputSection.Cusses, true))
+    options.eol.push(boot.asStderrSection(opts.OutputSection.Results, false))
   }
 
   const readonlyOptions: opts.Options = {
@@ -90,72 +85,38 @@ function parseOptions (argv: string[]): opts.Options | undefined {
   }
   return readonlyOptions
 
-  function parseEol (): boolean {
-    let isFirst = true
-    while (i < argv.length) {
-      const sectionArg = argv[i]
-      const enableDisable = sectionArg.length === 0 ? '' : sectionArg.charAt(0)
-      if (enableDisable === '-') {
-        if (!removeSection(sectionArg.substring(1))) {
-          break
-        }
-      } else if (enableDisable === '+') {
-        if (!addSection(sectionArg.substring(1), false)) {
-          break
-        }
-      } else if (enableDisable === '*') {
-        if (!addSection(sectionArg.substring(1), true)) {
-          break
-        }
-      } else {
-        break
-      }
-      isFirst = false
-      ++i
+  function isOutputSection (sectionArg: string): boolean {
+    if (sectionArg.length === 0) {
+      return false
+    }
+    const action = sectionArg.charAt(0)
+    return action === '-' || action === '+' || action === '*'
+  }
+
+  function parseOutputSection (sectionArg: string): boolean {
+    const action = sectionArg.charAt(0)
+    const section = sectionArg.substring(1)
+    let result: boolean
+    if (action === '-') {
+      result = removeSection(section)
+    } else if (action === '+') {
+      result = addSection(section, false)
+    } else if (action === '*') {
+      result = addSection(section, true)
+    } else {
+      result = false
     }
 
-    if (isFirst) {
-      console.error('Missing or invalid eol argument')
+    if (!result) {
+      console.error(`Unknown output section '${section}'`)
     }
-    return !isFirst
+    return result
 
     function addSection (val: string, isStderr: boolean): boolean {
       if (val === 'All') {
-        if (options.source.isAgc() || options.source.isRaytheon()) {
-          add(opts.EolSection.ListingWithCusses)
-          add(opts.EolSection.Symbols)
-          add(opts.EolSection.UndefinedSymbols)
-          add(opts.EolSection.UnreferencedSymbols)
-          add(opts.EolSection.CrossReference)
-          add(opts.EolSection.TableSummary)
-          add(opts.EolSection.MemorySummary)
-          add(opts.EolSection.Count)
-          add(opts.EolSection.Paragraphs)
-          add(opts.EolSection.OctalListing)
-          add(opts.EolSection.Occupied)
-          add(opts.EolSection.Results)
-        } else if (options.source.isBlk2()) {
-          add(opts.EolSection.ListingWithCusses)
-          add(opts.EolSection.Symbols)
-          add(opts.EolSection.TableSummary)
-          add(opts.EolSection.MemorySummary)
-          add(opts.EolSection.Occupied)
-          add(opts.EolSection.Paragraphs)
-          add(opts.EolSection.OctalListing)
-          add(opts.EolSection.Results)
-        } else {
-          add(opts.EolSection.ListingWithCusses)
-          add(opts.EolSection.Symbols)
-          add(opts.EolSection.TableSummary)
-          add(opts.EolSection.CrossReference)
-          add(opts.EolSection.MemorySummary)
-          add(opts.EolSection.Occupied)
-          add(opts.EolSection.Paragraphs)
-          add(opts.EolSection.OctalListing)
-          add(opts.EolSection.Results)
-        }
+        options.assembler.sections().forEach(add)
       } else {
-        const section = opts.EolSection[val]
+        const section = opts.OutputSection[val]
         if (section === undefined) {
           return false
         }
@@ -163,39 +124,18 @@ function parseOptions (argv: string[]): opts.Options | undefined {
       }
       return true
 
-      function add (section: opts.EolSection): void {
+      function add (section: opts.OutputSection): void {
         options.eol.push(boot.asStderrSection(section, isStderr))
       }
     }
 
     function removeSection (val: string): boolean {
       if (val === 'All') {
-        if (options.source.isYul()) {
-          remove(opts.EolSection.ListingWithCusses)
-          remove(opts.EolSection.Symbols)
-          remove(opts.EolSection.UndefinedSymbols)
-          remove(opts.EolSection.UnreferencedSymbols)
-          remove(opts.EolSection.CrossReference)
-          remove(opts.EolSection.TableSummary)
-          remove(opts.EolSection.MemorySummary)
-          remove(opts.EolSection.Count)
-          remove(opts.EolSection.Paragraphs)
-          remove(opts.EolSection.OctalListing)
-          remove(opts.EolSection.Occupied)
-          remove(opts.EolSection.Results)
-        } else {
-          remove(opts.EolSection.ListingWithCusses)
-          remove(opts.EolSection.Symbols)
-          remove(opts.EolSection.TableSummary)
-          remove(opts.EolSection.CrossReference)
-          remove(opts.EolSection.MemorySummary)
-          remove(opts.EolSection.Occupied)
-          remove(opts.EolSection.Paragraphs)
-          remove(opts.EolSection.OctalListing)
-          remove(opts.EolSection.Results)
-        }
+        options.assembler.sections().forEach(remove)
+        remove(opts.OutputSection.Listing)
+        remove(opts.OutputSection.Cusses)
       } else {
-        const section = opts.EolSection[val]
+        const section = opts.OutputSection[val]
         if (section === undefined) {
           return false
         }
@@ -203,7 +143,7 @@ function parseOptions (argv: string[]): opts.Options | undefined {
       }
       return true
 
-      function remove (section: opts.EolSection): void {
+      function remove (section: opts.OutputSection): void {
         const index1 = options.eol.lastIndexOf(boot.asStderrSection(section, false))
         const index2 = options.eol.lastIndexOf(boot.asStderrSection(section, true))
         const index = Math.max(index1, index2)
@@ -227,6 +167,11 @@ function parseOptions (argv: string[]): opts.Options | undefined {
       return false
     }
     options.source = source
+
+    if (!assemblerSet) {
+      options.assembler = opts.createMatchingAssembler(options.source.source())
+    }
+
     return true
   }
 
@@ -243,6 +188,7 @@ function parseOptions (argv: string[]): opts.Options | undefined {
       return false
     }
     options.assembler = assembler
+    assemblerSet = true
     return true
   }
 }
@@ -250,21 +196,30 @@ function parseOptions (argv: string[]): opts.Options | undefined {
 function usage (app: string): void {
   console.error(
 `Usage: ${app} [options] <url>
+
+  The <url> must be an absolute URL and typically references a code base's
+  MAIN.agc file.
+
   [-h|--help]
     This help text
-  [-e|--eol <+-><section> [...]]
-    Enables (+), disables (-), or enables on stderr (*) a particular end-of-
-    listing section. The enabled sections will be printed in the order given on
-    the command line. A disable (-) action removes the most recent addition of
-    the specified section.
-    The "All" option selects all sections output by the actual assembler for
-    the current mode (YUL or GAP) in the order they originally appeared.
-    If no "-e" option is given, output is Cusses on stderr and Results.
+
+  [<+-*><section> [...]]
+    Enables (+), disables (-), or enables on stderr (*) a particular output
+    section. The enabled sections will be printed in the order given. A disable
+    action removes the most recent addition of the specified section.
+    The "All" option selects all sections output by the YUL or GAP given by the
+    current assembler version in the order they originally appeared.
+    If no "-e" option is given, defaults to "-e *Cusses -e +Results".
     Each section must be one of the following.
       All, Listing, Cusses, ListingWithCusses,
       Symbols, UndefinedSymbols, UnreferencedSymbols, CrossReference,
       TableSummary, MemorySummary, Count, Paragraphs,
       OctalListing, OctalCompact, Occupied, Results
+
+  [-u|--unformatted]
+    Outputs unformatted data: no page breaks or headers and a single set of
+    columns per end-of-listing table
+
   [-s|--source <version>]
     Assembles for the specified source version.
     Source versions are:
@@ -279,32 +234,30 @@ function usage (app: string): void {
         Checksums without BNKSUM
         Positive bank number based checksums
         EBANK= doesn't reset on new log, one shot not required
-        Early version of some interpretive instruction words
+        Early version of some Block 2 interpretive instruction words
       A1966 Early AGC, suitable for Sunburst37
         Positive bank number based checksums
       A1967 Mid AGC, suitable for Sunburst120
         BANK with an operand updates SBANK
       AGC Suitable for all other versions
         This is the default
+
   [-a|--assembler <version>]
     Assembles as the specified assembler version.
-    If no version is specified, uses one suitable for the source version.
-    This primarily affects the end of listing tables and other informational
+    If no version is specified, uses the one that matches the source version.
+    This primarily affects the end-of-listing tables and other informational
     output.
     Versions are:
       RAY Raytheon assembler, suitable for SuperJob
-        GAP-type EOL output
+        The Raytheon assembly has no tables, but uses GAP-type EOL output
       Y1965 YUL 1965, suitable for Retread
         EOL output differences vs B1966
-      N1966 YUL November 1966, suitable for Aurora12
+      Y1966E YUL 1966 Early, suitable for Aurora12 and Solarium055
         EOL output differences vs Y1966
-      D1966 YUL December 1966, suitable for Sunburst37 and Solarium055
+      Y1966L YUL 1966 Late, suitable for Sunburst37
         EOL output differences vs GAP
       Y1967 YUL 1967, suitable for Sunburst120
         EOL output differences vs GAP
-      GAP The GAP port, suitable for all AGC targets
-  [-u|--unformatted]
-    Outputs unformatted data: no page breaks or headers and a single
-    set of columns per end-of-listing table
-`)
+      GAP The GAP port, suitable for AGC`
+  )
 }

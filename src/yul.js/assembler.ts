@@ -4,20 +4,20 @@ import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
 import { createMemory, Memory } from './memory'
 import { createOperations, Operations } from './operations'
-import { EolSection, Options } from './options'
+import { OutputSection, Options } from './options'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
 import * as assembly from './print-assembly'
 import * as cells from './print-cells'
 import * as symbols from './print-symbol-table'
-import { PrintContext, printCuss, PrinterContext } from './printer-utils'
+import { PrintContext, printCuss, Printer } from './printer'
 
 /**
  * The assembler.
  *
  * The assembler runs in two passes.
- * The first pass assigns memory locations to all instructions.
- * The second pass evaluates address fields and generates the binary output.
+ * The first pass lexes, parses, and assigns memory locations to all instructions.
+ * The second pass generates the binary output.
  *
  * Source code comments reference the various documents below with the abbreviations given.
   * - BTM:
@@ -52,21 +52,21 @@ import { PrintContext, printCuss, PrinterContext } from './printer-utils'
  */
 export default class Assembler {
   private readonly sectionDispatch = {
-    [EolSection.Cusses]: assembly.printCusses,
-    [EolSection.Listing]: assembly.printListing,
-    [EolSection.ListingWithCusses]: assembly.printListingWithCusses,
-    [EolSection.Symbols]: symbols.printSymbols,
-    [EolSection.UndefinedSymbols]: symbols.printUndefinedSymbols,
-    [EolSection.UnreferencedSymbols]: symbols.printUnreferencedSymbols,
-    [EolSection.CrossReference]: symbols.printCrossReference,
-    [EolSection.TableSummary]: symbols.printTableSummary,
-    [EolSection.MemorySummary]: cells.printMemorySummary,
-    [EolSection.Count]: assembly.printCounts,
-    [EolSection.Paragraphs]: cells.printParagraphs,
-    [EolSection.OctalListing]: cells.printOctalListing,
-    [EolSection.OctalCompact]: cells.printOctalListingCompact,
-    [EolSection.Occupied]: cells.printOccupied,
-    [EolSection.Results]: assembly.printResults
+    [OutputSection.Cusses]: assembly.printCusses,
+    [OutputSection.Listing]: assembly.printListing,
+    [OutputSection.ListingWithCusses]: assembly.printListingWithCusses,
+    [OutputSection.Symbols]: symbols.printSymbols,
+    [OutputSection.UndefinedSymbols]: symbols.printUndefinedSymbols,
+    [OutputSection.UnreferencedSymbols]: symbols.printUnreferencedSymbols,
+    [OutputSection.CrossReference]: symbols.printCrossReference,
+    [OutputSection.TableSummary]: symbols.printTableSummary,
+    [OutputSection.MemorySummary]: cells.printMemorySummary,
+    [OutputSection.Count]: assembly.printCounts,
+    [OutputSection.Paragraphs]: cells.printParagraphs,
+    [OutputSection.OctalListing]: cells.printOctalListing,
+    [OutputSection.OctalCompact]: cells.printOctalListingCompact,
+    [OutputSection.Occupied]: cells.printOccupied,
+    [OutputSection.Results]: assembly.printResults
   }
 
   /**
@@ -98,7 +98,7 @@ export default class Assembler {
   private printOutput (operations: Operations, memory: Memory, options: Options, pass2: Pass2Output): void {
     const program = getProgram(options.file)
     const user = compat.username()
-    const printer = new PrinterContext('001', program, user, '0000000-000', options.formatted)
+    const printer = new Printer(options, '001', program, user, '0000000-000', options.formatted)
     const charset = getCharset(options.assembler.isYul() ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
     const context: PrintContext = {
       options,
@@ -125,7 +125,7 @@ export default class Assembler {
       // Wait for ES2022, punt on weird URLs for now
       // const pathname = url.pathname.replaceAll(/\/+/g, '/')
       const pathname = url.pathname
-      const programMatch = pathname.match(/.*\/([^/]+\/[^/]+)\.agc/)
+      const programMatch = pathname.match(/.*\/([^/]+)\/[^/]+\.agc/)
       if (programMatch === null || programMatch[1] === null) {
         return pathname
       }

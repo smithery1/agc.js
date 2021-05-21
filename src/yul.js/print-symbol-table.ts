@@ -4,7 +4,7 @@ import * as ops from './operations'
 import { AssemblerEnum, Options } from './options'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
-import { PrintContext } from './printer-utils'
+import { PrintContext } from './printer'
 import { SymbolEntry } from './symbol-table'
 import { printTable, TableData } from './table-printer'
 
@@ -44,7 +44,7 @@ export function printCrossReference (pass2: Pass2Output, context: PrintContext):
   const table = pass2.symbolTable.getTable()
   const sorted = [...table.entries()].sort(valueSort)
   const version = context.options.assembler.assembler()
-  const def = version === AssemblerEnum.D1966
+  const def = version === AssemblerEnum.Y1966L
     ? XREF_YUL_66_TABLE_DATA
     : (version === AssemblerEnum.Y1967 ? XREF_YUL_67_TABLE_DATA : XREF_GAP_TABLE_DATA)
   printTable(context, def, sorted.values())
@@ -193,10 +193,10 @@ const ALL_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
     'SYMBOL TABLE LISTING, INCLUDING PAGE NUMBER OF DEFINITION, AND NUMBER OF REFERENCES WITH FIRST AND LAST PAGE NUMBERS'
   ],
   pageFooter: [
-    'KEY: SYMBOLS DEFINED BY EQUALS ARE FLAGGED =.  OTHERS ARE NORMALLY DEFINED EXCEPTED THOSE FLAGGED:',
+    'KEY: SYMBOLS DEFINED BY EQUALS ARE FLAGGED =.  OTHERS ARE NORMALLY DEFINED EXCEPT THOSE FLAGGED:',
     '',
-    'U UNDEFINED             E FAILED LEFTOVER ERASE   M MULTIPLY DEFINED          T WRONG MEMORY TYPE    MM MULTIPLE ERRORS',
-    'N NEARLY DEFINED BY =   J FAILED LEFTOVER WORD    O OVERSIZE OR ILL_DEFINED   C CONFLICT IN MEMORY   X  MISC. TROUBLE'
+    'U UNDEFINED             E FAILED LEFTOVER ERASE   M MULTIPLY DEFINED           T WRONG MEMORY TYPE    MM MULTIPLE ERRORS',
+    'N NEARLY DEFINED BY =   J FAILED LEFTOVER WORD    O OVERSIZE- OR ILL_DEFINED   C CONFLICT IN MEMORY   X  MISC. TROUBLE'
   ],
   tableHeader:
     'SYMBOL'.padEnd(ALL_YUL_COLUMNS.Symbol)

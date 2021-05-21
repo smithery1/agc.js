@@ -19,12 +19,12 @@
 #    relevant lines from the "proof" file.
 # 5. Compares the above outputs in the following combinations, noting any
 #    differences
-#    - yul.js with yaYUL main
-#    - yul.js with yaYUL fork
-#    - yaYUL fork with yaYUL main
 #    - yul.js with binsource
-#    - yaYUL main with binsource
+#    - yul.js with yaYUL fork
+#    - yul.js with yaYUL main
+#    - yaYUL fork with yaYUL main
 #    - yaYUL fork with binsource
+#    - yaYUL main with binsource
 #
 # The files used for comparison end with ".oct" and are generated into the code
 # base's main and fork directories. They are left in place if the comparison
@@ -46,23 +46,28 @@
 # assumes it's running in a Cygwin environment and node is not, and converts
 # paths to DOS as needed.
 #
-# Each test has the form <code base>[:<yul.js args>[:<yaYUL args>[:<lines>]]].
-# * code base: The name of the virtualagc directory with the AGC code.
-# * yul.js args: Required for early code bases. E.g. "-t Raytheon".
-# * yaYUL args: Required for early code bases. E.g. "--early-sbank".
-# lines: Number of significant lines of dump.py output to check. Set to 4096
-#        for early code bases to ignore empty superbank 4.
+# Each test has the following form.
+# <code base>[:<test args>[:<yul.js args>[:<yaYUL args>]]]
+# * code base: The name of the virtualagc directory with the AGC code
+# * test args: Controls the behavior of the test
+#     z: Ignore all-zero lines in the binary output for comparison purposes.
+#        This is required for Solarium055 where the binsource file includes
+#        zeros for the nonexistent banks, but should not be used elsewhere.
+# * yul.js args: Required for early code bases. E.g. "-t Raytheon"
+# * yaYUL args: Required for early code bases. E.g. "--early-sbank"
 #
 # The tests must be declared in the config file as a quoted newline-separated
-# list. Blank lines and leading and trailing whitespace is ignored. Example:
+# list. Blank lines and leading and trailing whitespace are ignored. Example:
 # TESTS="
-#    Sunburst37:-y Y1966:--early-sbank --pos-checksums:4096
+#    Sunburst37::-s A1966:--early-sbank --pos-checksums
 #    Luminary099
 # "
 #
 # Tests may also be given on the command line (note they may need to be quoted
-# for whitespace) as an argument per test, in which case the config file TESTS
-# are ignored.
+# for whitespace) as an argument per test. If the command line test does not
+# contains a ":" character and an entry in the TESTS list matches on its first
+# field, that full entry is used. Otherwise the command line test is used as
+# is.
 #
 
 declare -r YS_NAME="yul.js    "
@@ -72,7 +77,7 @@ declare -r BS_NAME="binsource "
 
 function usageAndExit
 {
-    echo "usage: $1 <config file> [test ...]" 1>&2
+    echo "usage: ${1##*/} <config file> [test ...]" 1>&2
     exit 1
 }
 
@@ -123,7 +128,7 @@ function assemblyTask
 
     local ARGS_DESC=
     [[ -n "$ARGS" ]] && ARGS_DESC=" with args $ARGS"
-    local DESC="$ASSEMBLER assembing $DIR$ARGS_DESC"
+    local DESC="$ASSEMBLER assembling $DIR$ARGS_DESC"
     runTask "$NUMBER" "$TOTAL" "$DESC" "$FUNC" "$DIR" "$ARGS" "$OUT"
 }
 
@@ -176,7 +181,7 @@ function yulJsAssemble
     local OUTPUT="$3"
     local MAIN_PATH=$(cygpath -w "$DIR/MAIN.agc" | sed 's@\\@/@g')
 
-    "$NODE" "$INDEX_PATH" "file:///$MAIN_PATH" $ARGS -u -e -All +OctalCompact \*Results \
+    "$NODE" "$INDEX_PATH" "file:///$MAIN_PATH" $ARGS -u -All +OctalCompact \*Results \
         | sed -e 's@^ *[^ ]* @@' -e "s/  @  /00000/g" \
         > "$OUTPUT"
 }
@@ -212,16 +217,29 @@ function sanitizeBinsource
     egrep '^([0-9]| *@)' /tmp/oct2bin.proof > "$OUTPUT"
 }
 
+function fileCount {
+    local IGNORE_ZERO_LINES=$1
+    local FILE="$2"
+
+    if [[ -n "$IGNORE_ZERO_LINES" ]]
+    then
+        egrep -v '^[0 ]+$' "$FILE" | wc -l
+    else
+        wc -l < "$FILE"
+    fi
+}
+
 function countMin
 {
     local COUNT=$1
-    local FILE="$2"
+    local IGNORE_ZERO_LINES=$2
+    local FILE="$3"
 
     if [[ -z "$FILE" ]]
     then
         echo $COUNT
     else
-        local FILE_COUNT=$(wc -l < "$FILE")
+        local FILE_COUNT=$(fileCount "$IGNORE_ZERO_LINES" "$FILE")
 
         if (( $COUNT == 0 || $COUNT > $FILE_COUNT ))
         then
@@ -237,16 +255,19 @@ function countMin
 function checkTails
 {
     local COUNT=$1
-    local YULJS_FORK_OUT="$2"
-    local YAYUL_FORK_OUT="$3"
-    local YAYUL_MAIN_OUT="$4"
-    local BINSOURCE_OUT="$5"
+    local IGNORE_ZERO_LINES=$2
+    local MIN_FILE="$3"
+    local YULJS_FORK_OUT="$4"
+    local YAYUL_FORK_OUT="$5"
+    local YAYUL_MAIN_OUT="$6"
+    local BINSOURCE_OUT="$7"
 
-    if ! checkTail $COUNT "$YULJS_FORK_OUT" $YS_NAME \
-        || ! checkTail $COUNT "$YAYUL_FORK_OUT" $YF_NAME \
-        || ! checkTail $COUNT "$YAYUL_MAIN_OUT" $YM_NAME \
-        || ! checkTail $COUNT "$BINSOURCE_OUT" $BS_NAME
+    if ! checkTail $COUNT "$IGNORE_ZERO_LINES" "$YULJS_FORK_OUT" $YS_NAME \
+        || ! checkTail $COUNT "$IGNORE_ZERO_LINES" "$YAYUL_FORK_OUT" $YF_NAME \
+        || ! checkTail $COUNT "$IGNORE_ZERO_LINES" "$YAYUL_MAIN_OUT" $YM_NAME \
+        || ! checkTail $COUNT "$IGNORE_ZERO_LINES" "$BINSOURCE_OUT" $BS_NAME
     then
+        echo "   Minimum line count from $MIN_FILE"
         return 1
     fi
 
@@ -256,10 +277,11 @@ function checkTails
 function checkTail
 {
     local COUNT=$1
-    local FILE="$2"
+    local IGNORE_ZERO_LINES=$2
+    local FILE="$3"
     [[ -z "$FILE" ]] && return 0
-    local NAME="$3"
-    local FILE_COUNT=$(wc -l < "$FILE")
+    local NAME="$4"
+    local FILE_COUNT=$(fileCount "$IGNORE_ZERO_LINES" "$FILE")
     local TAIL_COUNT=$(( $FILE_COUNT - $COUNT ))
 
     (( $TAIL_COUNT == 0 )) && return 0
@@ -277,31 +299,46 @@ function checkTail
 function truncateCounts
 {
     local COUNT=$1
-    local YULJS_FORK_OUT="$2"
-    local YAYUL_FORK_OUT="$3"
-    local YAYUL_MAIN_OUT="$4"
-    local BINSOURCE_OUT="$5"
+    local IGNORE_ZERO_LINES=$2
+    local YULJS_FORK_OUT="$3"
+    local YAYUL_FORK_OUT="$4"
+    local YAYUL_MAIN_OUT="$5"
+    local BINSOURCE_OUT="$6"
 
-    truncateCount $COUNT "$YULJS_FORK_OUT" || return 1
-    truncateCount $COUNT "$YAYUL_FORK_OUT" || return 1
-    truncateCount $COUNT "$YAYUL_MAIN_OUT" || return 1
-    truncateCount $COUNT "$BINSOURCE_OUT" || return 1
+    truncateCount $COUNT "$IGNORE_ZERO_LINES" "$YULJS_FORK_OUT" || return 1
+    truncateCount $COUNT "$IGNORE_ZERO_LINES" "$YAYUL_FORK_OUT" || return 1
+    truncateCount $COUNT "$IGNORE_ZERO_LINES" "$YAYUL_MAIN_OUT" || return 1
+    truncateCount $COUNT "$IGNORE_ZERO_LINES" "$BINSOURCE_OUT" || return 1
 }
 
 function truncateCount
 {
     local COUNT=$1
-    local FILE="$2"
+    local IGNORE_ZERO_LINES=$2
+    local FILE="$3"
     [[ -z "$FILE" ]] && return 0
-    head -$COUNT "$FILE" > $TMP_FILE || return 1
+
+    if [[ -n "$IGNORE_ZERO_LINES" ]]
+    then
+        egrep -v '^[0 ]+$' "$FILE" |  head -$COUNT > $TMP_FILE || return 1
+    else
+        head -$COUNT "$FILE" > $TMP_FILE || return 1
+    fi
     mv $TMP_FILE "$FILE" || return 1
+}
+
+function ignoreZeroLines
+{
+    [[ "$1" == *z* ]]
 }
 
 function testCodeBase
 {
     local CODE="$1"
-    local YULJS_ARGS="$2"
-    local YAYUL_ARGS="$3"
+    local TEST_ARGS="$2"
+    local YULJS_ARGS="$3"
+    local YAYUL_ARGS="$4"
+    local IGNORE_ZERO_LINES=
     local FORK_CODE_DIR="$FORK_REPO/$CODE"
     local FORK_MAIN="$FORK_CODE_DIR/MAIN.agc"
     local MAIN_CODE_DIR="$MAIN_REPO/$CODE"
@@ -312,8 +349,12 @@ function testCodeBase
     local BINSOURCE="$MAIN_CODE_DIR/${CODE}.binsource"
     local BINSOURCE_OUT=
     local COUNT=0
+    local NEWCOUNT=0
+    local MIN_FILE=
     local TOTAL_TASKS=6
     local TASK=0
+
+    [[ "$TEST_ARGS" == *z* ]] && IGNORE_ZERO_LINES=1
 
     if [[ -f "$BINSOURCE" ]]
     then
@@ -333,19 +374,28 @@ function testCodeBase
 
     let TASK=$TASK+1
     startTask $TASK $TOTAL_TASKS "Count lines"
-    COUNT=$(countMin $COUNT "$YULJS_FORK_OUT")
-    COUNT=$(countMin $COUNT "$YAYUL_FORK_OUT")
-    COUNT=$(countMin $COUNT "$YAYUL_MAIN_OUT")
-    COUNT=$(countMin $COUNT "$BINSOURCE_OUT")
+    COUNT=$(countMin $COUNT "$IGNORE_ZERO_LINES" "$YULJS_FORK_OUT")
+    MIN_FILE="$YULJS_FORK_OUT"
+    NEWCOUNT=$(countMin $COUNT "$IGNORE_ZERO_LINES" "$YAYUL_FORK_OUT")
+    (( $NEWCOUNT != $COUNT )) && MIN_FILE="$YAYUL_FORK_OUT"
+    COUNT=$NEWCOUNT
+    NEWCOUNT=$(countMin $COUNT "$IGNORE_ZERO_LINES" "$YAYUL_MAIN_OUT")
+    (( $NEWCOUNT != $COUNT )) && MIN_FILE="$YAYUL_MAIN_OUT"
+    COUNT=$NEWCOUNT
+    NEWCOUNT=$(countMin $COUNT "$IGNORE_ZERO_LINES" "$BINSOURCE_OUT")
+    (( $NEWCOUNT != $COUNT )) && MIN_FILE="$BINSOURCE_OUT"
+    COUNT=$NEWCOUNT
     endTask 0
 
     let TASK=$TASK+1
     runTask $TASK $TOTAL_TASKS "Check tails" checkTails \
-        $COUNT "$YULJS_FORK_OUT" "$YAYUL_FORK_OUT" "$YAYUL_MAIN_OUT" "$BINSOURCE_OUT" || return 1
+        $COUNT "$IGNORE_ZERO_LINES" \
+        "$MIN_FILE" "$YULJS_FORK_OUT" "$YAYUL_FORK_OUT" "$YAYUL_MAIN_OUT" "$BINSOURCE_OUT" || return 1
 
     let TASK=$TASK+1
     runTask $TASK $TOTAL_TASKS "Truncate counts" truncateCounts \
-        $COUNT "$YULJS_FORK_OUT" "$YAYUL_FORK_OUT" "$YAYUL_MAIN_OUT" "$BINSOURCE_OUT" || return 1
+        $COUNT "$IGNORE_ZERO_LINES" \
+        "$YULJS_FORK_OUT" "$YAYUL_FORK_OUT" "$YAYUL_MAIN_OUT" "$BINSOURCE_OUT" || return 1
 
     echo "$COUNT lines of output"
     compareAll "$YULJS_FORK_OUT" "$YAYUL_MAIN_OUT" "$YAYUL_FORK_OUT" "$BINSOURCE_OUT" || return 1
@@ -399,8 +449,9 @@ function runTests
         set $CODELINE
         IFS=$ORIG_IFS
         CODE=$1
-        YULJS_ARGS=${2:-''}
-        YAYUL_ARGS=${3:-''}
+        TEST_ARGS=${2:-''}
+        YULJS_ARGS=${3:-''}
+        YAYUL_ARGS=${4:-''}
 
         cat << EOF
 
@@ -408,7 +459,7 @@ function runTests
 $CODELINE
 -----------------------------------------------------------------------------------------------------------------------
 EOF
-        if ! testCodeBase "$CODE" "$YULJS_ARGS" "$YAYUL_ARGS"
+        if ! testCodeBase "$CODE" "$TEST_ARGS" "$YULJS_ARGS" "$YAYUL_ARGS"
         then
             IFS=$NL_IFS
             FAILURES="$FAILURES
@@ -420,8 +471,8 @@ EOF
 
 (( $# < 1 )) && usageAndExit "$0"
 source "$1" || exit 1
-typeset -r INDEX_PATH=$(cygpath -w "$YULJS/node/index-node.js")
 shift
+typeset -r INDEX_PATH=$(cygpath -w "$YULJS/node/index-node.js")
 
 ORIG_IFS=$IFS
 NL_IFS="

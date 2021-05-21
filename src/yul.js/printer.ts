@@ -3,10 +3,10 @@ import { CharSet } from './charset'
 import * as cusses from './cusses'
 import { Memory } from './memory'
 import { Operations } from './operations'
-import { Options } from './options'
+import { AssemblerEnum, Options, SourceEnum } from './options'
 
 export interface PrintContext {
-  printer: PrinterContext
+  printer: Printer
   operations: Operations
   memory: Memory
   options: Options
@@ -34,7 +34,7 @@ const MONTHS = [
   'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
 ]
 
-export class PrinterContext {
+export class Printer {
   private readonly header: string
   private readonly formatted: boolean
   private output: (...data: any[]) => void
@@ -43,9 +43,12 @@ export class PrinterContext {
   private separator = false
   private page = 1
 
-  constructor (revision: string, program: string, user: string, part: string, formatted: boolean) {
-    const header = `YUL.JS:  ASSEMBLE REVISION ${revision.toUpperCase()} OF AGC PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()} ${part}`
-    const spacing = ' '.repeat(Math.max(0, 78 - header.length))
+  constructor (options: Options, revision: string, program: string, user: string, part: string, formatted: boolean) {
+    const assemblerType = AssemblerEnum[options.assembler.assembler()]
+    const sourceType = SourceEnum[options.source.source()]
+    const assemble = options.assembler.isYul() ? '' : 'ASSEMBLE '
+    const header = `YUL.JS FOR ${assemblerType}: ${assemble}REVISION ${revision.toUpperCase()} OF ${sourceType} PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()} ${part}`
+    const spacing = ' '.repeat(Math.max(0, 121 - 31 - header.length))
     this.header = header + spacing
     this.formatted = formatted
     this.output = compat.output

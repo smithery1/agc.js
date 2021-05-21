@@ -24,8 +24,8 @@ export interface SourceLine {
 /**
  * The lexed line.
  * Each line has up to three fields (location, operator, and operand) and a remark.
- * If type is Remark, field1 will be undefined if the remark spanned the full line, and an empty string if the remark
- * began in the middle of an otherwise empty line.
+ * If type is Remark, field1 will be undefined if the remark spanned the full line ("remark" card), and an empty string
+ * if the remark began in the middle of an otherwise empty line ("aligned remark" card).
  */
 export interface LexedLine {
   type: LineType
@@ -38,7 +38,7 @@ export interface LexedLine {
 
 /**
  * The yaYUL main source file, which includes all the others.
- * Comments in this file are ignored, while in other files they are preserved as "Remark"s.
+ * Comments in this file are ignored, while in other files they are preserved as remarks.
  */
 const MAIN_SOURCE = '/MAIN.agc'
 /**
@@ -57,11 +57,12 @@ const PAGE_EXPR = /^## Page ([0-9]+)/
  * Non-significant lines are those that are blank or contain a yaYUL comment.
  *
  * An original remark is a comment outside MAIN.agc with a single hash (#).
- * A pagination remark is a line of the form "## Page 123".
- * An insertion statement is a line of the "$file.agc" (anything after the "$" is treated as the file name).
+ * A pagination remark is a line of the form `## Page 123`.
+ * An insertion statement is a line of the form `$file.agc` (anything after the "$" is treated as the file name).
  * Code is any other non-blank non-comment line.
  *
- * Ref yaYUL for the most of the formatting here.
+ * Tabs are converted to 8 spaces.
+ * See Ref yaYUL for the most of the formatting assumptions used here.
  *
  * @param source the name of the source, returned in each LexedLine
  * @param stream the source as a stream

@@ -82,6 +82,10 @@ export interface Basic extends BaseOperation {
    */
   readonly qc?: number
   /**
+   * The peripheral code for this instruction, if it uses one.
+   */
+  readonly pc?: number
+  /**
    * If an address field is used, the allowable values for the address field.
    */
   readonly addressRange?: BasicAddressRange
@@ -424,7 +428,8 @@ export abstract class Operations {
       symbol,
       isExtended: true,
       opCode: 0,
-      qc: pc,
+      qc: undefined,
+      pc,
       addressRange: BasicAddressRange.IOChannel,
       addressField: Necessity.Required,
       words: 1
@@ -437,6 +442,7 @@ export abstract class Operations {
     symbol: string,
     opCode: number,
     qc: number | undefined,
+    pc: number | undefined,
     addressRange: BasicAddressRange,
     addressBias?: number):
     Basic {
@@ -445,7 +451,8 @@ export abstract class Operations {
       symbol,
       isExtended,
       opCode,
-      qc: qc,
+      qc,
+      pc,
       addressRange,
       addressBias,
       addressField: Necessity.Optional,
@@ -462,7 +469,7 @@ export abstract class Operations {
     addressBias?: number):
     Basic {
     const op = this.createBasicExtended(
-      isExtended, symbol, opCode, qc, addressRange, addressBias)
+      isExtended, symbol, opCode, qc, undefined, addressRange, addressBias)
     return this.add(symbol, op)
   }
 
@@ -842,7 +849,7 @@ abstract class Block2Operations extends Operations {
     // This is the basic one.
     this.INDEX = this.addBasicQc('INDEX', 5, 0)
     // This is the extended one.
-    this.EXTENDED_INDEX = this.createBasicExtended(true, 'INDEX', 5, 0, BasicAddressRange.AnyMemory, undefined)
+    this.EXTENDED_INDEX = this.createBasicExtended(true, 'INDEX', 5, 0, undefined, BasicAddressRange.AnyMemory)
     this.alias('INDEX', '5')
     this.alias('INDEX', 'NDX')
     this.addBasicSpecial('RESUME', 5, 15)

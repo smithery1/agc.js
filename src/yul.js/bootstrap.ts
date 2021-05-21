@@ -1,11 +1,11 @@
 import Assembler from './assembler'
-import { EolSection, Options } from './options'
+import { OutputSection, Options } from './options'
 
-export function asStderrSection (section: EolSection, isStderr: boolean): number {
+export function asStderrSection (section: OutputSection, isStderr: boolean): number {
   return isStderr ? (section | 0x100) : section
 }
 
-export function isStderrSection (section: EolSection): { section: EolSection, isStderr: boolean } {
+export function isStderrSection (section: OutputSection): { section: OutputSection, isStderr: boolean } {
   if ((section & 0x100) > 0) {
     return { section: (section & 0xFF), isStderr: true }
   }

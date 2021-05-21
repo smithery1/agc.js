@@ -105,7 +105,7 @@ const BLOCK2_TRUE_ADDRESS_RANGES: MemoryRange[] = [
   // Fixed banks 00-01, variable-fixed
   { min: 0x1000, max: 0x13FF, type: MemoryType.Variable_Fixed },
   { min: 0x1400, max: 0x17FF, type: MemoryType.Variable_Fixed },
-  // Nonexistent
+  // Nonexistent, not bank numbered
   { min: 0x1800, max: 0x1FFF, type: MemoryType.Nonexistent },
   // Fixed banks 04-27, variable-fixed
   { min: 0x2000, max: 0x23FF, type: MemoryType.Variable_Fixed },
@@ -142,7 +142,7 @@ const BLOCK2_TRUE_ADDRESS_RANGES: MemoryRange[] = [
   { min: 0x9400, max: 0x97FF, type: MemoryType.Variable_Fixed },
   { min: 0x9800, max: 0x9BFF, type: MemoryType.Variable_Fixed },
   { min: 0x9C00, max: 0x9FFF, type: MemoryType.Variable_Fixed },
-  // Nonexistent
+  // Nonexistent, not bank numbered
   { min: 0xA000, max: 0xCFFF, type: MemoryType.Nonexistent },
   // Fixed banks 60-67, Superbank S5?
   { min: 0xD000, max: 0xD3FF, type: MemoryType.Variable_Fixed },
@@ -167,17 +167,19 @@ export function createMemory (options: Options): Memory {
 
   let banks: number
   let nonexistentHighMem: Range | undefined
+  let moduleOffset: number
 
   if (options.source.isAgc()) {
     banks = 43
     nonexistentHighMem = { min: 0xF000, max: 0xFFFF }
-  } else if (options.source.isBlk2()) {
-    banks = 23
+    moduleOffset = 1
   } else {
     banks = 35
     nonexistentHighMem = { min: 0xA000, max: 0xEFFF }
+    moduleOffset = 0
   }
-  return new Block2Memory(banks, nonexistentHighMem)
+
+  return new Block2Memory(banks, nonexistentHighMem, moduleOffset)
 }
 
 export abstract class Memory {
@@ -189,7 +191,8 @@ export abstract class Memory {
     private readonly ranges: MemoryRange[],
     private readonly fixedBanks: MemoryRange[],
     private readonly firstFixedBank: number,
-    private readonly nonExistent: MemoryRange[]
+    private readonly nonExistent: MemoryRange[],
+    private readonly moduleOffset: number
   ) {
     this.erasableBanksCount = ranges.reduce((total: number, range: MemoryRange) => {
       return this.isErasable(range.type) ? total + 1 : total
@@ -268,9 +271,9 @@ export abstract class Memory {
   }
 
   /**
-   * Returns the number of the first fixed bank in this memory.
+   * Returns the bank number of the first fixed bank in this memory.
    *
-   * @returns the number of the first fixed bank in this memory
+   * @returns the bank number of the first fixed bank in this memory
    */
   firstFixedBankNumber (): number {
     return this.firstFixedBank
@@ -468,7 +471,7 @@ export abstract class Memory {
       return undefined
     }
 
-    return Math.floor((bank + 1) / 6) + 1
+    return Math.floor((bank + this.moduleOffset) / 6) + 1
   }
 
   /**
@@ -588,7 +591,7 @@ class Block1Memory extends Memory {
       }
     })
 
-    super(ranges, fixedBanks, 1, nonExistent)
+    super(ranges, fixedBanks, 1, nonExistent, 0)
 
     this.lowMemoryMin = fixedBanks[2].min
     this.lowMemoryMax = fixedBanks[12].max
@@ -649,9 +652,13 @@ class Block2Memory extends Memory {
    *
    * @param numFixedBanks the number of fixed banks typically 027, 037, 043
    * @param nonexistentHighMem special unaddressable high memory, if any
+   * @param moduleOffset bank offset to calculate hardware module
    * @throws if fixedBanks is not in the range [027, 043]
    */
-  constructor (numFixedBanks: number, nonexistentHighMem: Range | undefined) {
+  constructor (
+    numFixedBanks: number,
+    nonexistentHighMem: Range | undefined,
+    moduleOffset: number) {
     if (numFixedBanks < 23 || numFixedBanks > 43) {
       throw new Error('fixedBanks out of range')
     }
@@ -690,7 +697,7 @@ class Block2Memory extends Memory {
       nonExistent.push(range)
     }
 
-    super(ranges, fixedBanks, 0, nonExistent)
+    super(ranges, fixedBanks, 0, nonExistent, moduleOffset)
   }
 
   fixedBankNumberToBank (bank: number): { fBank: number, sBank?: number } | undefined {

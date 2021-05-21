@@ -5,7 +5,7 @@ import { LocationField } from './parser'
 
 /**
  * The state of a symbol table entry.
- * The abbreviations correspond to observed YUL output in original assembly listings.
+ * The abbreviations correspond to YUL output in original assembly listings.
  */
 export enum Health {
   MultiplyDefined = 'MD',

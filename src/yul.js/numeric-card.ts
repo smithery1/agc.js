@@ -9,7 +9,7 @@ import { isWhitespace } from './util'
 
 /**
  * The result of lexing a numeric card field.
- * Contains a low word an optional high for double-precision fields.
+ * Contains a low word and an optional high word for double-precision fields.
  */
 export interface Words {
   highWord?: number
@@ -31,7 +31,7 @@ const SP_NEGATE_MASK = 0x7FFF
 const DP_LOW_INT_WORD_MASK = 0x3FFF
 const DP_LOW_LOGICAL_WORD_MASK = 0x7FFF
 // Ref YUL, 13-143 says only 10 decimal and 14 octal significant digits are allowed, and anything beyond is truncated.
-// But code has more than that, and truncating results in mismatched values vs. actual.
+// But (probably later) code has more than that, and truncating results in mismatched values vs. actual.
 // So allow more here.
 const DECIMAL_MAX_DIGITS = 20
 const OCTAL_MAX_DIGITS = 24
@@ -39,12 +39,13 @@ const OCTAL_MAX_DIGITS = 24
 /**
  * Attempts to translate the specified token into a number based on the specified operation.
  * Failure to do so results in one or more cusses added to localCusses and returning undefined.
- * The operation must be DEC, 2DEC, OCT, or 2OCT.
+ * If the operation is DEC, 2DEC, OCT, or 2OCT extensive lexing is done based on Ref YUL.
+ * Otherwise it is lexed as a simple decimal number.
  *
  * @param op the operation whose operand is given in token
  * @param isExtended whether the token is an "extended" address field (Ref YUL, 13-142)
  * @param token the address field token
- * @param localCusses cusses to added to on lexing errors
+ * @param localCusses cusses added to on lexing errors
  * @returns the lexed number(s)
  */
 export function lexNumeric (
@@ -74,7 +75,12 @@ function lexSimpleDecimal (token: string, localCusses: cusses.Cusses): Words | u
     return undefined
   }
 
-  const result = Number.parseInt(token)
+  const result = Number.parseInt(token, 10)
+  if (result > SP_INT_MAX) {
+    localCusses.add(cusses.Cuss1E)
+    return undefined
+  }
+
   return { lowWord: result }
 }
 
@@ -99,8 +105,8 @@ function lexDecimal (
   const scaling = parsed.scaling === undefined ? 0 : parsed.scaling
   exp -= fractional.length
 
-  const wholeNumber = whole.length === 0 ? 0 : Number.parseInt(whole)
-  const fractionalNumber = fractional.length === 0 ? 0 : Number.parseInt(fractional)
+  const wholeNumber = whole.length === 0 ? 0 : Number.parseInt(whole, 10)
+  const fractionalNumber = fractional.length === 0 ? 0 : Number.parseInt(fractional, 10)
   let decimal = wholeNumber * Math.pow(10, fractional.length) + fractionalNumber
   const { numerator: scaleNum, denominator: scaleDenom } = base10Scaling(exp, scaling)
   const max = isDp ? DP_INT_MAX : SP_INT_MAX
@@ -164,7 +170,7 @@ function lexOctal (
 
   octal /= octScale
 
-  // Ref YUL, 13-145.
+  // Ref YUL, 13-145
   let max: number
   if (parsed.positive === undefined) {
     max = isDp ? DP_LOGICAL_MAX : SP_LOGICAL_MAX

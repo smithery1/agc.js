@@ -328,8 +328,8 @@ export class Pass2Assembler {
     }
 
     const opCode = card.operation.operation.opCode
-    const qc = card.operation.operation.qc ?? 0
-    const word = opCode << 12 | qc << 9 | resolved.address
+    const pc = card.operation.operation.pc ?? 0
+    const word = opCode << 12 | pc << 9 | resolved.address
     this.setCell(word, resolved.offset, card.operation.complemented, assembled)
   }
 

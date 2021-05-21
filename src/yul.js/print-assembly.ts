@@ -8,7 +8,7 @@ import { InterpretiveType } from './operations'
 import { AssemblerEnum } from './options'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
-import { LINE_LENGTH, PrintContext } from './printer-utils'
+import { LINE_LENGTH, PrintContext } from './printer'
 import { printTable, TableData } from './table-printer'
 import { parity } from './util'
 
@@ -244,15 +244,15 @@ function printAssembly (pass2: Pass2Output, context: PrintContext, listing: bool
 
     if (card !== null && parse.isBasic(card.card)) {
       if (card.card.operation.operation.qc === undefined) {
-        const highDigit = (word & 0x7000) >> 12
+        const highDigit = word >> 12
         const lowDigits = word & 0xFFF
-
         return ' ' + highDigit.toString(8) + ' ' + lowDigits.toString(8).padStart(4, '0')
       } else {
-        const highDigits = (word & 0x7E00) >> 9
+        const highDigits = word >> 9
         const lowDigits = word & 0x1FF
-
-        return ' ' + highDigits.toString(8).padStart(2, '0') + ' ' + lowDigits.toString(8).padStart(3, '0')
+        const qcOn = (highDigits & 1) === 1
+        const tick = qcOn ? "'" : ' '
+        return ' ' + highDigits.toString(8).padStart(2, '0') + tick + lowDigits.toString(8).padStart(3, '0')
       }
     }
 
@@ -402,7 +402,6 @@ export function printCounts (pass2: Pass2Output, context: PrintContext): void {
     count.cumCount = cumCount
   })
   printTable(context, COUNT_TABLE_DATA, sortedTable.values())
-  context.printer.endPage()
 }
 
 function expandCountSymbol (memory: Memory, address: number, card: parse.ClericalCard, field: string): string {

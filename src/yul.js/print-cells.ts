@@ -1,9 +1,10 @@
 import { Cell } from './cells'
 import * as mem from './memory'
+import * as ops from './operations'
 import { AssemblerEnum } from './options'
 import * as parse from './parser'
 import { Pass2Output } from './pass2'
-import { PrintContext } from './printer-utils'
+import { PrintContext } from './printer'
 import { printTable, TableData } from './table-printer'
 import { parity } from './util'
 
@@ -65,6 +66,9 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
         return start + 1
       } else if (range.type === mem.MemoryType.Unswitched_Banked_Erasable && yul) {
         while (++start < ranges.length && ranges[start].type !== mem.MemoryType.Fixed_Fixed);
+      } else if (range.type === mem.MemoryType.Fixed_Fixed && yul) {
+        while (++start < ranges.length
+          && (ranges[start].type === range.type || ranges[start].type === mem.MemoryType.Variable_Fixed));
       } else {
         while (++start < ranges.length && ranges[start].type === range.type);
       }
@@ -138,7 +142,7 @@ export function printMemorySummary (pass2: Pass2Output, context: PrintContext): 
     function adjustEnd (max: number): number {
       // D1966 and earlier do not consider the checksum cell "used"
       const maxCell = cells[max]
-      if (context.options.assembler.isAtMost(AssemblerEnum.D1966)
+      if (context.options.assembler.isAtMost(AssemblerEnum.Y1966L)
         && maxCell !== undefined
         && parse.isClerical(maxCell.definition.card)
         && maxCell.definition.card.operation.operation === context.operations.operation('BNKSUM')) {
@@ -211,9 +215,10 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
       ++separator
       continue
     }
-    if (isYul && ++separator === 5) {
-      context.printer.println('')
-      ++row
+    if (isYul && ++separator >= 5) {
+      if (++row < rowsPerPage) {
+        context.printer.println('')
+      }
       separator = 1
     }
     if (row >= rowsPerPage) {
@@ -242,18 +247,20 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
       const minString = memory.asAssemblyString(address).padStart(7)
       const maxString = memory.asAssemblyString(address + 255).padStart(7)
       const paragraphString = paragraph.toString(8).padStart(3, '0')
-      const module = memory.hardwareModule(bank)
+      const module = memory.hardwareModule(bank) ?? 0
       const side = memory.hardwareSide(sRegister)
       const set = memory.hardwareStrand(bank, sRegister)
+      const setPad = isYul ? '0' : ' '
       const wires = memory.hardwareWires(set)
+      const wiresPad = isYul ? 0 : 3
 
       context.printer.println(
-        minString, 'TO', maxString,
-        'PARAGRAPH #', paragraphString,
-        '         ROPE MODULE ', module,
-        ', SIDE ', side,
-        ', SENSE LINE SET ', set.toString().padStart(2),
-        '(WIRES ' + wires.min.toString().padStart(3) + '-' + wires.max.toString().padStart(3) + ')'
+        minString, ' TO', maxString,
+        '    PARAGRAPH #', paragraphString,
+        '        ROPE MODULE', module.toString(8) + ', SIDE',
+        side + ', SENSE LINE SET',
+        set.toString().padStart(2, setPad),
+        '(WIRES', wires.min.toString().padStart(wiresPad) + '-' + wires.max.toString().padStart(wiresPad) + ')'
       )
     }
   }
@@ -272,6 +279,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
   const memory = context.memory
   const isYul = context.options.assembler.isYul()
   const ofFor = isYul ? 'OF' : 'FOR'
+  const space = isYul ? '' : ' '
   const punct = isYul ? ';' : ','
   const period = isYul ? '.' : ''
   const used = cacheUsedParagraphs(cells, context)
@@ -294,10 +302,10 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
       context.printer.println(
         `OCTAL LISTING ${ofFor} PARAGRAPH #`,
         paragraph.toString(8).padStart(OCTAL_LISTING_COLUMNS.Paragraph, '0') + ',',
-        ` WITH PARITY BIT IN BINARY AT THE RIGHT OF EACH WORD${punct} "@" DENOTES UNUSED FIXED MEMORY`)
+        `${space}WITH PARITY BIT IN BINARY AT THE RIGHT OF EACH WORD${punct} "@" DENOTES UNUSED FIXED MEMORY${period}`)
       context.printer.println('')
       context.printer.println(
-        'ALL VALID WORDS ARE BASIC INSTRUCTIONS EXCEPT THOSE MARKED "I" (INTERPRETIVE OPERATOR WORDS) OR "C" (CONSTANTS)' + period)
+        `ALL VALID WORDS ARE BASIC INSTRUCTIONS EXCEPT THOSE MARKED "I" (INTERPRETIVE OPERATOR WORDS) OR "C" (CONSTANTS)${period}`)
     }
 
     for (let i = startIndex; i < startIndex + 256; i += 8) {
@@ -313,7 +321,7 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
     }
 
     const address = memory.memoryAddress(startIndex)
-    const addressString = memory.asAssemblyString(address).padStart(OCTAL_LISTING_COLUMNS.Address, ' ')
+    const addressString = memory.asAssemblyString(address).padStart(OCTAL_LISTING_COLUMNS.Address, ' ') + ' '
 
     if (startIndex % 32 === 0) {
       context.printer.println('')
@@ -345,22 +353,16 @@ export function printOctalListing (pass2: Pass2Output, context: PrintContext): v
         return { type: '', value: '  @'.padEnd(OCTAL_LISTING_COLUMNS.Value, ' '), parity: '' }
       }
 
-      let type = ''
+      let type: string
       const card = cell.definition.card
-      if (parse.isAddressConstant(card)) {
-        if (card.operation.operation === context.operations.operation('P')) {
-          type = 'I:'
-        } else {
-          type = 'C:'
-        }
-      } else if (parse.isNumericConstant(card)) {
+      if (parse.isInterpretive(card) && card.lhs?.operation.subType !== ops.InterpretiveType.Store) {
+        type = 'I:'
+      } else if (parse.isClerical(card) && card.operation.operation === context.operations.operation('BNKSUM')) {
+        type = 'CKSM'
+      } else if (!parse.isBasic(card)) {
         type = 'C:'
-      } else if (parse.isClerical(card)) {
-        if (card.operation.operation === context.operations.operation('BNKSUM')) {
-          type = 'CKSM'
-        } else {
-          type = 'C:'
-        }
+      } else {
+        type = ''
       }
       const parityString = parity(cell.value) ? '1' : '0'
       return { type, value: cell.value.toString(8), parity: parityString }
@@ -401,13 +403,9 @@ export function printOctalListingCompact (pass2: Pass2Output, context: PrintCont
   }
 
   function printLine (startIndex: number, cells: Cell[]): void {
-    const address = memory.memoryAddress(startIndex)
-    const addressString = memory
-      .asAssemblyString(address)
-      .padStart(OCTAL_LISTING_COLUMNS.Address, ' ')
-
+    const address = addressString(startIndex)
     const entries: string[] = []
-    entries.push(addressString)
+    entries.push(address)
     for (let i = startIndex; i < startIndex + 8; i++) {
       const value = cells[i]?.value
       if (value === undefined) {
@@ -418,6 +416,13 @@ export function printOctalListingCompact (pass2: Pass2Output, context: PrintCont
     }
 
     context.printer.println(...entries)
+  }
+
+  function addressString (index: number): string {
+    const address = memory.memoryAddress(index)
+    return memory
+      .asAssemblyString(address)
+      .padStart(OCTAL_LISTING_COLUMNS.Address, ' ')
   }
 }
 

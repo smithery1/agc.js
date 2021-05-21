@@ -18,7 +18,7 @@ const OCTAL_EXPR = /^[0-7]+$/
  * @param str the string to test
  * @returns true iff the specified string consists entirely of octal digits
  */
-export function isWholeOctal (str: string): boolean {
+export function isOctal (str: string): boolean {
   return OCTAL_EXPR.test(str)
 }
 

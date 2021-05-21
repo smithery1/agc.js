@@ -2,11 +2,11 @@ export interface Options {
   file: string
   source: Source
   assembler: Assembler
-  eol: EolSection[]
+  eol: OutputSection[]
   formatted: boolean
 }
 
-export enum EolSection {
+export enum OutputSection {
   Listing,
   ListingWithCusses,
   Cusses,
@@ -27,8 +27,8 @@ export enum EolSection {
 export enum AssemblerEnum {
   RAY,
   Y1965,
-  N1966,
-  D1966,
+  Y1966E,
+  Y1966L,
   Y1967,
   GAP
 }
@@ -52,16 +52,16 @@ export function createMatchingAssembler (source: SourceEnum): Assembler {
       return new Assembler(AssemblerEnum.RAY)
 
     case SourceEnum.AGC4:
-      return new Assembler(AssemblerEnum.D1966)
+      return new Assembler(AssemblerEnum.Y1966E)
 
     case SourceEnum.B1965:
       return new Assembler(AssemblerEnum.Y1965)
 
     case SourceEnum.B1966:
-      return new Assembler(AssemblerEnum.N1966)
+      return new Assembler(AssemblerEnum.Y1966E)
 
     case SourceEnum.A1966:
-      return new Assembler(AssemblerEnum.D1966)
+      return new Assembler(AssemblerEnum.Y1966L)
 
     case SourceEnum.A1967:
       return new Assembler(AssemblerEnum.Y1967)
@@ -103,6 +103,48 @@ export class Assembler {
       return false
     } else {
       return this.assemblerEnum <= test
+    }
+  }
+
+  sections (): OutputSection[] {
+    if (this.isGap() || this.isRaytheon()) {
+      return [
+        OutputSection.ListingWithCusses,
+        OutputSection.Symbols,
+        OutputSection.UndefinedSymbols,
+        OutputSection.UnreferencedSymbols,
+        OutputSection.CrossReference,
+        OutputSection.TableSummary,
+        OutputSection.MemorySummary,
+        OutputSection.Count,
+        OutputSection.Paragraphs,
+        OutputSection.OctalListing,
+        OutputSection.Occupied,
+        OutputSection.Results
+      ]
+    } else if (this.assembler() === AssemblerEnum.Y1965 || this.assembler() === AssemblerEnum.Y1966E) {
+      return [
+        OutputSection.ListingWithCusses,
+        OutputSection.Symbols,
+        OutputSection.TableSummary,
+        OutputSection.MemorySummary,
+        OutputSection.Occupied,
+        OutputSection.Paragraphs,
+        OutputSection.OctalListing,
+        OutputSection.Results
+      ]
+    } else {
+      return [
+        OutputSection.ListingWithCusses,
+        OutputSection.Symbols,
+        OutputSection.TableSummary,
+        OutputSection.CrossReference,
+        OutputSection.MemorySummary,
+        OutputSection.Occupied,
+        OutputSection.Paragraphs,
+        OutputSection.OctalListing,
+        OutputSection.Results
+      ]
     }
   }
 }

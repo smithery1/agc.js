@@ -177,7 +177,6 @@ export function parse (
 /**
  * Resolves the specified address field to a TrueAddress, if possible, using the specified location counter and symbol
  * table if necessary.
- * See parser.ts for information on the contents of the AddressField.
  * See Ref YUL, 13-126 for most of these rules below.
  *
  * 1. If the address field is undefined, i.e. unspecified, the location counter is returned with a 0 offset if defined.
@@ -250,7 +249,6 @@ export type Resolver = (symbol: string) => number | undefined
  * Note that returning a separate offset is not required here, as it is for the resolve function above.
  * Anything referenced as a symbol must resolve to a single numeric address, so any offset is simply added to the
  * address.
- * Can be called by the symbol tables with resolvers appropriate to pass 1 or pass 2.
  *
  * @param address the address field
  * @param locationCounter the location counter for the instruction with the specified address field

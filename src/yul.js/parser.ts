@@ -536,7 +536,7 @@ export class Parser {
     const bb = addressField.slice(2, 4)
     const llll = addressField.slice(4)
 
-    if (!utils.isWholeOctal(bb) || !utils.isWholeOctal(llll)) {
+    if (!utils.isOctal(bb) || !utils.isOctal(llll)) {
       this.cardCusses.add(cusses.Cuss3D)
       return undefined
     }
