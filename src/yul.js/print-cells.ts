@@ -243,25 +243,38 @@ export function printParagraphs (pass2: Pass2Output, context: PrintContext): voi
     }
 
     if (paragraph !== undefined && bankAndAddress !== undefined && bank !== undefined) {
+      const isBlock1 = context.options.source.isBlock1()
       const sRegister = bankAndAddress.address
       const minString = memory.asAssemblyString(address).padStart(7)
       const maxString = memory.asAssemblyString(address + 255).padStart(7)
       const paragraphString = paragraph.toString(8).padStart(3, '0')
       const module = memory.hardwareModule(bank) ?? 0
-      const side = memory.hardwareSide(sRegister)
+      const side = isBlock1 ? '' : memory.hardwareSide(sRegister)
+      const stick = isBlock1 ? memory.hardwareStick(bank) : ''
       const set = memory.hardwareStrand(bank, sRegister)
       const setPad = isYul ? '0' : ' '
       const wires = memory.hardwareWires(set)
       const wiresPad = isYul ? 0 : 3
 
-      context.printer.println(
-        minString, ' TO', maxString,
-        '    PARAGRAPH #', paragraphString,
-        '        ROPE MODULE', module.toString(8) + ', SIDE',
-        side + ', SENSE LINE SET',
-        set.toString().padStart(2, setPad),
-        '(WIRES', wires.min.toString().padStart(wiresPad) + '-' + wires.max.toString().padStart(wiresPad) + ')'
-      )
+      if (isBlock1) {
+        context.printer.println(
+          minString, ' TO', maxString,
+          '    PARAGRAPH #', paragraphString,
+          '          MODULE', 'B' + module.toString(),
+          '   STICK #', stick,
+          '    SENSE LINE SET', set.toString(),
+          '(WIRES', wires.min.toString() + '-' + wires.max.toString() + ')'
+        )
+      } else {
+        context.printer.println(
+          minString, ' TO', maxString,
+          '    PARAGRAPH #', paragraphString,
+          '        ROPE MODULE', module.toString(8) + ', SIDE',
+          side + ', SENSE LINE SET',
+          set.toString().padStart(2, setPad),
+          '(WIRES', wires.min.toString().padStart(wiresPad) + '-' + wires.max.toString().padStart(wiresPad) + ')'
+        )
+      }
     }
   }
 }

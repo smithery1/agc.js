@@ -29,9 +29,13 @@ export function printCuss (instance: cusses.CussInstance): void {
 
 export const LINE_LENGTH = 120
 const PAGE_BREAK = '-'.repeat(LINE_LENGTH)
-const MONTHS = [
-  'JANUARY', 'FEBRAURY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
-  'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'
+const YUL_MONTHS = [
+  'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUNE',
+  'JULY', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'
+]
+const GAP_MONTHS = [
+  'JAN.', 'FEB.', 'MAR.', 'APR.', 'MAY', 'JUNE',
+  'JULY', 'AUG.', 'SEP.', 'OCT.', 'NOV.', 'DEC.'
 ]
 
 export class Printer {
@@ -47,9 +51,16 @@ export class Printer {
     const assemblerType = AssemblerEnum[options.assembler.assembler()]
     const sourceType = SourceEnum[options.source.source()]
     const assemble = options.assembler.isYul() ? '' : 'ASSEMBLE '
-    const header = `YUL.JS FOR ${assemblerType}: ${assemble}REVISION ${revision.toUpperCase()} OF ${sourceType} PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()} ${part}`
-    const spacing = ' '.repeat(Math.max(0, 121 - 31 - header.length))
-    this.header = header + spacing
+    const now = new Date()
+    const hours = now.getHours().toString().padStart(2, '0')
+    const minutes = now.getMinutes().toString().padStart(2, '0')
+    const hhmm = options.assembler.isYul() ? '' : `${hours}:${minutes} `
+    const months = options.assembler.isYul() ? YUL_MONTHS : GAP_MONTHS
+    const space = options.assembler.isYul() ? ' ' : ''
+    const time = `${hhmm}${months[now.getMonth()]} ${now.getDate()},${space}${now.getFullYear()}`
+    const header = `YUL.JS FOR ${assemblerType}:  ${assemble}REVISION ${revision.toUpperCase()} OF ${sourceType} PROGRAM ${program.toUpperCase()} BY ${user.toUpperCase()} ${part}`
+    const spacing = ' '.repeat(Math.max(0, LINE_LENGTH - header.length - time.length - 12))
+    this.header = header + spacing + time + '   PAGE'
     this.formatted = formatted
     this.output = compat.output
   }
@@ -105,14 +116,7 @@ export class Printer {
 
   printHeader (): void {
     if (this.formatted) {
-      const now = new Date()
-      const hours = now.getHours().toString().padStart(2, '0')
-      const minutes = now.getMinutes().toString().padStart(2, '0')
-      const time = `${hours}:${minutes} ${MONTHS[now.getMonth()]} ${now.getDate()},${now.getFullYear()}`
-      const occupied = LINE_LENGTH - 12 - this.header.length - time.length
-      const spacing = ' '.repeat(Math.max(0, occupied))
-
-      this.output(this.header, time, spacing, 'PAGE', this.page.toString().padStart(4))
+      this.output(this.header, this.page.toString().padStart(4))
       this.output()
     }
   }

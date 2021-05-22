@@ -191,8 +191,7 @@ export abstract class Memory {
     private readonly ranges: MemoryRange[],
     private readonly fixedBanks: MemoryRange[],
     private readonly firstFixedBank: number,
-    private readonly nonExistent: MemoryRange[],
-    private readonly moduleOffset: number
+    private readonly nonExistent: MemoryRange[]
   ) {
     this.erasableBanksCount = ranges.reduce((total: number, range: MemoryRange) => {
       return this.isErasable(range.type) ? total + 1 : total
@@ -461,40 +460,40 @@ export abstract class Memory {
 
   /**
    * Returns the hardware module number for the specified fixed bank number.
-   * Ref SYM, IIF-3.
+   * Ref SYM, IIF-3, differs for Block 1.
    *
    * @param bank the fixed bank
-   * @returns the module number 1-6, or undefined if bank is not a fixed bank number
+   * @returns the module number, or undefined if bank is not a fixed bank number
    */
-  hardwareModule (bank: number): number | undefined {
-    if (!this.isFixedBank(bank)) {
-      return undefined
-    }
-
-    return Math.floor((bank + this.moduleOffset) / 6) + 1
-  }
+  abstract hardwareModule (bank: number): number | undefined
 
   /**
    * Returns the hardware side string ('A' or 'B') for the specified S-register address.
    * Ref SYM, IIF-3.
+   * Only applicable to Block 2.
    *
    * @param sRegister the S-register value
    * @returns the side
    */
-  hardwareSide (sRegister: number): string {
-    return (sRegister & 0x100) === 0 ? 'A' : 'B'
-  }
+  abstract hardwareSide (sRegister: number): string
+
+  /**
+   * Returns the hardware stick number.
+   * Only applicable to Block 1.
+   *
+   * @param bank the fixed bank
+   * @returns the stick number, or undefined if bank is not a fixed bank number
+   */
+  abstract hardwareStick (bank: number): string | undefined
 
   /**
    * Returns the hardware strand (1 - 12) within a module for the specified bank and S-register address.
-   * Ref SYM, IIF-3.
+   * Ref SYM, IIF-3, differs for Block 1.
    *
    * @param bank the fixed bank
    * @param sRegister the S-register value
    */
-  hardwareStrand (bank: number, sRegister: number): number {
-    return 2 * (bank % 6) + ((sRegister & 0x200) === 0 ? 0 : 1) + 1
-  }
+  abstract hardwareStrand (bank: number, sRegister: number): number
 
   /**
    * Returns the hardware wire range for the specified set.
@@ -503,11 +502,7 @@ export abstract class Memory {
    * @param set the set
    * @returns the wire range
    */
-  hardwareWires (set: number): Range {
-    const min = 1 + (set - 1) * 16
-    const max = min + 15
-    return { min, max }
-  }
+  abstract hardwareWires (set: number): Range
 
   /**
    * Returns the number of usable memory words.
@@ -591,7 +586,7 @@ class Block1Memory extends Memory {
       }
     })
 
-    super(ranges, fixedBanks, 1, nonExistent, 0)
+    super(ranges, fixedBanks, 1, nonExistent)
 
     this.lowMemoryMin = fixedBanks[2].min
     this.lowMemoryMax = fixedBanks[12].max
@@ -641,9 +636,55 @@ class Block1Memory extends Memory {
       }
     }
   }
+
+  hardwareModule (bank: number): number | undefined {
+    if (!this.isFixedBank(bank)) {
+      return undefined
+    }
+
+    const moduleOffset = (bank - 1) >> 2 & 3
+    const offset = bank % 4 < 2 ? 0 : 1
+    switch (moduleOffset) {
+      case 0:
+        return 28 + offset
+      case 1:
+        return 21 + offset
+      case 2:
+        return 23 + offset
+    }
+  }
+
+  hardwareSide (sRegister: number): string {
+    throw new Error('Unsupported operation')
+  }
+
+  hardwareStick (bank: number): string | undefined {
+    if (!this.isFixedBank(bank)) {
+      return undefined
+    }
+
+    const moduleOffset = (bank - 1) >> 2 & 3
+    const rope = String.fromCharCode('R'.charCodeAt(0) + moduleOffset)
+    const offset = bank % 4 < 2 ? '1' : '2'
+    const side = bank % 2 === 0 ? 'A' : 'B'
+
+    return rope + offset + side
+  }
+
+  hardwareStrand (bank: number, sRegister: number): number {
+    return 4 * Math.floor(bank / 17) + Math.floor((sRegister - 0xC00) / 0xFF)
+  }
+
+  hardwareWires (set: number): Range {
+    const min = 1 + set * 16
+    const max = min + 15
+    return { min, max }
+  }
 }
 
 class Block2Memory extends Memory {
+  private readonly moduleOffset: number
+
   /**
    * Constructs a block 2 memory representation with the specified number of
    * banks and nonexistent high memory range.
@@ -697,7 +738,9 @@ class Block2Memory extends Memory {
       nonExistent.push(range)
     }
 
-    super(ranges, fixedBanks, 0, nonExistent, moduleOffset)
+    super(ranges, fixedBanks, 0, nonExistent)
+
+    this.moduleOffset = moduleOffset
   }
 
   fixedBankNumberToBank (bank: number): { fBank: number, sBank?: number } | undefined {
@@ -782,5 +825,31 @@ class Block2Memory extends Memory {
         return false
       }
     }
+  }
+
+  hardwareModule (bank: number): number | undefined {
+    if (!this.isFixedBank(bank)) {
+      return undefined
+    }
+
+    return Math.floor((bank + this.moduleOffset) / 6) + 1
+  }
+
+  hardwareSide (sRegister: number): string {
+    return (sRegister & 0x100) === 0 ? 'A' : 'B'
+  }
+
+  hardwareStick (bank: number): string | undefined {
+    throw new Error('Unsupported operation')
+  }
+
+  hardwareStrand (bank: number, sRegister: number): number {
+    return 2 * (bank % 6) + ((sRegister & 0x200) === 0 ? 0 : 1) + 1
+  }
+
+  hardwareWires (set: number): Range {
+    const min = 1 + (set - 1) * 16
+    const max = min + 15
+    return { min, max }
   }
 }
