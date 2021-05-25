@@ -4,15 +4,15 @@ export interface TableData<Entry> {
   leadGap?: number
   columns: number
   columnWidth: number
-  columnGap?: number
+  columnGap?: number | string
   rowsPerPage: number
   rowBreaks?: number
   pageHeader?: string[]
   pageFooter?: string[]
   tableHeader?: string
   reflowLastPage?: boolean
-  entryString: (context: PrintContext, entry: Entry) => string | undefined
-  separator: (context: PrintContext, entry: Entry, lastEntry: Entry) => boolean
+  entryString: (context: PrintContext, entry: Entry, row: number, column: number) => string | undefined
+  separator?: (context: PrintContext, entry: Entry, lastEntry: Entry) => boolean
 }
 
 export function printTable<Entry> (
@@ -34,31 +34,44 @@ export function printTable<Entry> (
   }
   const leadGap = ' '.repeat((tableData.leadGap ?? 1) - 1)
   const fullLeadGap = ' '.repeat(tableData.leadGap ?? 0)
-  const columnSeparator = ' '.repeat(tableData.columnGap ?? 0)
-  const separator = '='.repeat(tableData.columnWidth) + columnSeparator
+  const columnSeparator = typeof tableData.columnGap === 'string'
+    ? tableData.columnGap
+    : ' '.repeat(tableData.columnGap ?? 0)
+  const emptyLine = columnSeparator.length === 0 || tableData.columns <= 1
+    ? ''
+    : ' '.repeat(tableData.columnWidth) + (' ' + columnSeparator + ' '.repeat(tableData.columnWidth)).repeat(columns - 1)
+  const separator = '='.repeat(tableData.columnWidth)
   const tableHeader = tableData.tableHeader === undefined
     ? undefined
-    : fullLeadGap + (tableData.tableHeader + columnSeparator + ' ').repeat(columns)
+    : fullLeadGap + tableData.tableHeader + (' ' + columnSeparator + tableData.tableHeader).repeat(columns - 1)
   let page = 0
 
   for (let next = entries.next(); next.done !== true; next = entries.next()) {
     const entry = next.value
-    const entryString = tableData.entryString(context, entry)
+    const entryString = tableData.entryString(context, entry, currentRow, currentCol)
 
     if (entryString !== undefined) {
-      if (
-        options.formatted
+      if (options.formatted
+        && tableData.separator !== undefined
         // See Aurora12 p648/649 for an example of YUL not printing a separator as the first entry in a page.
         // See Luminary099 p1563 for an example of GAP doing printing one.
         && (!options.assembler.isYul() || currentCol > 0 || currentRow > 0)
         && lastEntry !== undefined
         && tableData.separator(context, entry, lastEntry)) {
-        output[currentRow][currentCol] = separator
+        if (currentCol === 0) {
+          output[currentRow][currentCol] = separator
+        } else {
+          output[currentRow][currentCol] = columnSeparator + separator
+        }
         incRow()
       }
 
       lastEntry = entry
-      output[currentRow][currentCol] = entryString + columnSeparator
+      if (currentCol === 0) {
+        output[currentRow][currentCol] = entryString
+      } else {
+        output[currentRow][currentCol] = columnSeparator + entryString
+      }
       incRow()
     }
   }
@@ -102,7 +115,7 @@ export function printTable<Entry> (
       }
       if (options.formatted && tableHeader !== undefined) {
         printer.println(tableHeader)
-        printer.println()
+        printer.println(emptyLine)
       }
     }
 

@@ -4,7 +4,7 @@ import { CharSetType, getCharset } from './charset'
 import { isCussInstance } from './cusses'
 import { createMemory, Memory } from './memory'
 import { createOperations, Operations } from './operations'
-import { OutputSection, Options } from './options'
+import { Options, OutputSection } from './options'
 import { Pass1Assembler } from './pass1'
 import { Pass2Assembler, Pass2Output } from './pass2'
 import * as assembly from './print-assembly'
@@ -98,7 +98,7 @@ export default class Assembler {
   private printOutput (operations: Operations, memory: Memory, options: Options, pass2: Pass2Output): void {
     const program = getProgram(options.file)
     const user = compat.username()
-    const printer = new Printer(options, '001', program, user, '0000000-000', options.formatted)
+    const printer = new Printer(options, program.version, program.program, user, '0000000-000', options.formatted)
     const charset = getCharset(options.assembler.isYul() ? CharSetType.HONEYWELL_800 : CharSetType.EBCDIC)
     const context: PrintContext = {
       options,
@@ -120,16 +120,17 @@ export default class Assembler {
     })
     printer.stderr(false)
 
-    function getProgram (mainUrl: string): string {
+    function getProgram (mainUrl: string): { program: string, version: string } {
       const url = new URL(mainUrl)
       // Wait for ES2022, punt on weird URLs for now
       // const pathname = url.pathname.replaceAll(/\/+/g, '/')
       const pathname = url.pathname
-      const programMatch = pathname.match(/.*\/([^/]+)\/[^/]+\.agc/)
-      if (programMatch === null || programMatch[1] === null) {
-        return pathname
+      const programMatch = pathname.match(/(?:.*\/)?([^/0-9]+)([0-9]*)\/[^/]+\.agc/)
+      if (programMatch === null) {
+        return { program: pathname, version: '0' }
       }
-      return programMatch[1]
+      const version = programMatch[2].length === 0 ? '0' : programMatch[2]
+      return { program: programMatch[1], version }
     }
   }
 }

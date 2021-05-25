@@ -1,5 +1,25 @@
 import { AssembledCard } from './assembly'
 
+/**
+ * The mask used to obtain the one's complement of a 15-bit word.
+ */
+export const COMPLEMENT_MASK = 0x7FFF
+
+/**
+* One's complement negative zero
+*/
+export const NEGATIVE_ZERO = COMPLEMENT_MASK
+
+/**
+* A quantity used as a placeholder when an error prevents determining a correct value.
+*/
+export const ERROR_WORD = 0
+
+/**
+ * The maximum quantity that can be held in a 15 bit word
+ */
+export const MAX_15_BITS = 0x7FFF
+
 const WHITESPACE_EXPR = /^\s+$/
 /**
  * Returns true iff the specified string consists entirely of whitespace.

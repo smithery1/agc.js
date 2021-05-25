@@ -1,7 +1,8 @@
 import * as field from './address-field'
-import { AssembledCard, ERROR_WORD, getCusses } from './assembly'
+import { AssembledCard, getCusses } from './assembly'
 import * as cusses from './cusses'
 import { LocationField } from './parser'
+import { ERROR_WORD } from './util'
 
 /**
  * The state of a symbol table entry.

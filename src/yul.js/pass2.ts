@@ -1,5 +1,5 @@
 import * as field from './address-field'
-import { AssembledCard, COMPLEMENT_MASK, ERROR_WORD, getCusses, NEGATIVE_ZERO } from './assembly'
+import { AssembledCard, getCusses } from './assembly'
 import { Cells } from './cells'
 import * as cusses from './cusses'
 import { LineType, SourceLine } from './lexer'
@@ -10,6 +10,7 @@ import { Options, SourceEnum } from './options'
 import * as parse from './parser'
 import { Pass1Output } from './pass1'
 import { Pass2SymbolTable } from './symbol-table'
+import { COMPLEMENT_MASK, ERROR_WORD, NEGATIVE_ZERO } from './util'
 
 /**
  * The output from pass 2 assembly.
@@ -143,9 +144,9 @@ export class Pass2Assembler {
 
     if (this.options.source.source() === SourceEnum.B1966
       || this.options.source.source() === SourceEnum.AGC4) {
-      this.addToBnkSums()
+      this.addBnkSums()
     }
-    this.addBnkSums()
+    this.calcBnkSums()
     return this.output
   }
 
@@ -925,7 +926,7 @@ export class Pass2Assembler {
     }
   }
 
-  private addToBnkSums (): void {
+  private addBnkSums (): void {
     // Aurora 12 and Solarium055 manually add the end-of-bank TC instructions but don't use BNKSUM.
     // The checksums are present in the octal table, however.
     // Solarium055 puts some data *after* the checksum in bank 2 (ugh), so we need to scan backwards for the TC
@@ -976,8 +977,8 @@ export class Pass2Assembler {
     }
   }
 
-  private addBnkSums (): void {
-    // SuperJob doesn't add the TCs or use BNKSUM and in fact writes to the end of several banks, so bnkSums in empty
+  private calcBnkSums (): void {
+    // SuperJob doesn't add the TCs or use BNKSUM and in fact writes to the end of several banks, so bnkSums is empty
     // for the Raytheon assembler option.
 
     // Ref SYM, IIF-6 for the checksum algorithm.

@@ -174,20 +174,19 @@ function allGapEntryString (context: PrintContext, data: [string, SymbolEntry]):
 
 const ALL_YUL_COLUMNS = {
   Symbol: 8,
-  Health: 2,
+  Health: 1,
   Def: 7,
   Page: 4,
   Refs: 4,
   Flag: 1,
   AllRefs: 4 + 1 + 4 + 1 + 4 + 1 + 4 + 1,
-  Entry: 8 + 1 + 2 + 1 + 7 + 1 + 4 + 4 + 4 + 1 + 4 + 1
+  Entry: 2 + 8 + 1 + 1 + 7 + 1 + 4 + 4 + 4 + 1 + 4 + 1
 }
 
 const ALL_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
-  leadGap: 2,
   columns: 3,
   columnWidth: ALL_YUL_COLUMNS.Entry,
-  columnGap: 1,
+  columnGap: '|',
   rowsPerPage: 43,
   pageHeader: [
     'SYMBOL TABLE LISTING, INCLUDING PAGE NUMBER OF DEFINITION, AND NUMBER OF REFERENCES WITH FIRST AND LAST PAGE NUMBERS'
@@ -199,8 +198,7 @@ const ALL_YUL_TABLE_DATA: TableData<[string, SymbolEntry]> = {
     'N NEARLY DEFINED BY =   J FAILED LEFTOVER WORD    O OVERSIZE- OR ILL_DEFINED   C CONFLICT IN MEMORY   X  MISC. TROUBLE'
   ],
   tableHeader:
-    'SYMBOL'.padEnd(ALL_YUL_COLUMNS.Symbol)
-    + 'H'.padEnd(ALL_YUL_COLUMNS.Health)
+    '  SYMBOL H'
     + '   DEFINITION'
     + '   REFERENCES'
     + ' ' + 'F',
@@ -218,20 +216,23 @@ function allYulEntryString (context: PrintContext, data: [string, SymbolEntry]):
   const page = entry.definition.lexedLine.sourceLine.page
   const references = entry.references.length
   const firstLast = getFirstLastReferences(entry.references)
+  const isY1966E = context.options.assembler.assembler() === AssemblerEnum.Y1966E
+  const padPageOffset = isY1966E ? -1 : 0
+  const emptyRefsPrefix = isY1966E ? ' ' : ''
   let refsString: string
 
   if (references === 0) {
-    refsString = ALL_YUL_EMPTY_REFS
+    refsString = emptyRefsPrefix + ALL_YUL_EMPTY_REFS
   } else {
-    refsString = references.toString().padStart(ALL_YUL_COLUMNS.Refs)
-      + firstLast.first.toString().padStart(ALL_GAP_COLUMNS.Page)
-      + (firstLast.last < 0 ? '' : firstLast.last.toString()).padStart(ALL_GAP_COLUMNS.Page)
+    refsString = references.toString().padStart(ALL_YUL_COLUMNS.Refs - padPageOffset)
+      + firstLast.first.toString().padStart(ALL_YUL_COLUMNS.Page)
+      + (firstLast.last < 0 ? '' : firstLast.last.toString()).padStart(ALL_YUL_COLUMNS.Page)
   }
 
-  return symbol.padEnd(ALL_YUL_COLUMNS.Symbol)
-  + ' ' + health.padEnd(ALL_YUL_COLUMNS.Health)
+  return '  ' + symbol.padEnd(ALL_YUL_COLUMNS.Symbol)
+  + health.padEnd(ALL_YUL_COLUMNS.Health)
     + ' ' + context.memory.asAssemblyString(entry.value).padStart(ALL_YUL_COLUMNS.Def)
-    + ' ' + page.toString().padStart(ALL_YUL_COLUMNS.Page)
+    + ' ' + page.toString().padStart(ALL_YUL_COLUMNS.Page + padPageOffset)
     + refsString
     + ' ' + flag
 }
@@ -290,8 +291,7 @@ const XREF_GAP_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   '   DEF'.padEnd(XREF_COLUMNS.Def)
     + ' ' + 'PAGE'.padEnd(XREF_COLUMNS.Page)
     + '  ' + 'SYMBOL'.padEnd(XREF_COLUMNS.Symbol),
-  entryString: xrefEntryString,
-  separator: () => false
+  entryString: xrefEntryString
 }
 
 const XREF_YUL_67_TABLE_DATA: TableData<[string, SymbolEntry]> = {
@@ -301,8 +301,7 @@ const XREF_YUL_67_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   rowsPerPage: 50,
   rowBreaks: 4,
   pageHeader: ['ERASABLE & EQUIVALENCE CROSS-REFERENCE TABLE: SHOWING DEFINITION, PAGE OF DEFINITION, AND SYMBOL'],
-  entryString: xrefEntryString,
-  separator: () => false
+  entryString: xrefEntryString
 }
 
 const XREF_YUL_66_TABLE_DATA: TableData<[string, SymbolEntry]> = {
@@ -317,8 +316,7 @@ const XREF_YUL_66_TABLE_DATA: TableData<[string, SymbolEntry]> = {
   rowsPerPage: 50,
   rowBreaks: 4,
   pageHeader: ['ERASABLE & EQUIVALENCE CROSS-REFERENCE TABLE: SHOWING DEFINITION, PAGE OF DEFINITION, AND SYMBOL'],
-  entryString: xrefYul66EntryString,
-  separator: () => false
+  entryString: xrefYul66EntryString
 }
 
 function xrefEntryString (context: PrintContext, data: [string, SymbolEntry]): string | undefined {

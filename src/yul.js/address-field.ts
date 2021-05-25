@@ -43,7 +43,24 @@ const ADDRESS_FIELD_EXPR = /^([^\s]+)(?:\s+((?:\+\s*|-)\d+D?))?$/
 const RANGE_FIELD_EXPR = /^(\d+D?)\s+-\s+(\d+D?)$/
 const INDEXED_FIELD_EXPR = /^([^\s,]+)(?:\s+([+-]\d+D?))?(?:,([12]))?$/
 
-const MAX_15_BITS = 0x7FFF
+/**
+ * Attempts to parse the specified address field.
+ *
+ * An interpretive indexed field must end with ",[12]".
+ * An ERASE or MEMORY field may contain a range of unsigned numbers "[0-9]D? - [0-9]D?".
+ *
+ * @param field the address field
+ * @param interpretiveIndex whether an interpretive index is allowed
+ * @param rangeAllowed whether the field may contain a range expression
+ * @param options used to check for Raytheon source to allow decimals without a trailing "D"
+ * @param parseCusses added to if cusses are generated
+ * @returns the parsed field or undefined if it could not be parsed
+ */
+export function parse (
+  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean, options: Options, parseCusses: cusses.Cusses):
+  AddressField | undefined {
+  return parseMax(field, interpretiveIndex, rangeAllowed, utils.MAX_15_BITS, options, parseCusses)
+}
 
 /**
  * Attempts to parse the specified address field.
@@ -54,18 +71,26 @@ const MAX_15_BITS = 0x7FFF
  * @param field the address field
  * @param interpretiveIndex whether an interpretive index is allowed
  * @param rangeAllowed whether the field may contain a range expression
- * @returns the parsed field or a cuss
+ * @param max the max allowable absolute value
+ * @param options used to check for Raytheon source to allow decimals without a trailing "D"
+ * @param parseCusses added to if cusses are generated
+ * @returns the parsed field or undefined if it could not be parsed
  */
-export function parse (
-  field: string, interpretiveIndex: ops.Necessity, rangeAllowed: boolean, options: Options, parseCusses: cusses.Cusses):
+export function parseMax (
+  field: string,
+  interpretiveIndex: ops.Necessity,
+  rangeAllowed: boolean,
+  max: number,
+  options: Options,
+  parseCusses: cusses.Cusses):
   AddressField | undefined {
   const match = interpretiveIndex !== ops.Necessity.Never
     ? INDEXED_FIELD_EXPR.exec(field)
     : ADDRESS_FIELD_EXPR.exec(field)
   if (match === null || match[1] === undefined) {
-    // If an ERASE field does not match the standard address form, check for a range.
+    // If an ERASE or MEMORY field does not match the standard address form, check for a range.
     if (rangeAllowed) {
-      return parseErase(field, parseCusses)
+      return parseRange(field, parseCusses)
     }
     parseCusses.add(cusses.Cuss3D)
     return undefined
@@ -92,7 +117,7 @@ export function parse (
   }
 
   if (utils.isUnsigned(match[1])) {
-    const parsed = parseUnsigned(match[1], MAX_15_BITS, parseCusses)
+    const parsed = parseUnsigned(match[1], max, parseCusses)
     if (parsed === undefined) {
       return undefined
     }
@@ -109,11 +134,11 @@ export function parse (
 
   return { value: match[1], offset, indexRegister }
 
-  function parseErase (field: string, parseCusses: cusses.Cusses): AddressField | undefined {
+  function parseRange (field: string, parseCusses: cusses.Cusses): AddressField | undefined {
     const rangeMatch = RANGE_FIELD_EXPR.exec(field)
     if (rangeMatch !== null) {
-      const value1 = parseUnsigned(rangeMatch[1], MAX_15_BITS, parseCusses)
-      const value2 = parseUnsigned(rangeMatch[2], MAX_15_BITS, parseCusses)
+      const value1 = parseUnsigned(rangeMatch[1], max, parseCusses)
+      const value2 = parseUnsigned(rangeMatch[2], max, parseCusses)
       if (value1 === undefined || value2 === undefined) {
         return undefined
       }
@@ -135,7 +160,7 @@ export function parse (
       parseCusses.add(cusses.Cuss3D)
     }
 
-    const parsed = parseUnsigned(signed.substring(1).trimLeft(), MAX_15_BITS, parseCusses)
+    const parsed = parseUnsigned(signed.substring(1).trimLeft(), max, parseCusses)
     if (parsed === undefined) {
       return undefined
     }

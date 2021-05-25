@@ -29,7 +29,7 @@ Subsequent steps can implement further external interfaces and tie them into the
 
 ## Current State
 
-Step one is in progress. The assembler "yul.js" produces correct binary output for all Luminary code bases, Retread, SuperJob, and a sample Comanche code base. Visual inspection of varying degrees of exactness has shown the end of listing table data identical to that produced by GAP. Next up is to further automate tests and run against the remaining code bases. See the [yul.js README][5] for more information on the assembler and how it works.
+The assembler "yul.js" produces correct binary output for all code bases. Visual inspection of varying degrees of exactness has shown the end of listing table data identical to that produced by YUL and GAP. See the [yul.js README][5] for more information on the assembler and how it works.
 
 [1]: https://virtualagc.github.io/virtualagc/index.html
 [2]: https://github.com/virtualagc/virtualagc/tree/master/Luminary099

@@ -35,25 +35,25 @@
 # following lines.
 # NODE=<path>      # Path of the node executable
 # YULJS=<path>     # Directory of the top level of a yul.js compiled build
-# YAYUL=<path>     # Path of the virtualagc yaYUL executable
-# OCT2BIN=<path>   # Path of the virtualagc oct2bin executable
+# YAYUL=<path>     # Path of the Virtual AGC yaYUL executable
+# OCT2BIN=<path>   # Path of the Virtual AGC oct2bin executable
 # DUMP=<path>      # Path of the yul.js dump.py script
-# FORK_REPO=<path> # Directory of the local virtualagc fork repo
-# MAIN_REPO=<path> # Directory of the local virtualagc main repo
+# FORK_REPO=<path> # Directory of the local Virtual AGC fork repo
+# MAIN_REPO=<path> # Directory of the local Virtual AGC main repo
 # TESTS=<list>     # The tests to run, see below
 #
 # The configured locations should all be given as UNIX paths, but the script
 # assumes it's running in a Cygwin environment and node is not, and converts
-# paths to DOS as needed.
+# certain paths to DOS as needed.
 #
 # Each test has the following form.
 # <code base>[:<test args>[:<yul.js args>[:<yaYUL args>]]]
-# * code base: The name of the virtualagc directory with the AGC code
+# * code base: The name of the Virtual AGC subdirectory with the code base
 # * test args: Controls the behavior of the test
 #     z: Ignore all-zero lines in the binary output for comparison purposes.
 #        This is required for Solarium055 where the binsource file includes
 #        zeros for the nonexistent banks, but should not be used elsewhere.
-# * yul.js args: Required for early code bases. E.g. "-t Raytheon"
+# * yul.js args: Required for early code bases. E.g. "-s Raytheon"
 # * yaYUL args: Required for early code bases. E.g. "--early-sbank"
 #
 # The tests must be declared in the config file as a quoted newline-separated
@@ -193,7 +193,7 @@ function yaYulAssemble
     local OUTPUT="$3"
 
     pushd $DIR > /dev/null || return 1
-    "$YAYUL" $ARGS MAIN.agc > /dev/null || return 1
+    "$YAYUL" $ARGS MAIN.agc > /dev/null || ( popd > /dev/null; return 1 )
     popd > /dev/null || return 1
     "$DUMP" "$DIR/MAIN.agc.bin" > "$OUTPUT" || return 1
 }
@@ -472,7 +472,7 @@ EOF
 (( $# < 1 )) && usageAndExit "$0"
 source "$1" || exit 1
 shift
-typeset -r INDEX_PATH=$(cygpath -w "$YULJS/node/index-node.js")
+declare -r INDEX_PATH=$(cygpath -w "$YULJS/node/index-node.js")
 
 ORIG_IFS=$IFS
 NL_IFS="

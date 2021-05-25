@@ -6,7 +6,7 @@ import * as parse from './parser'
 import { Pass2Output } from './pass2'
 import { PrintContext } from './printer'
 import { printTable, TableData } from './table-printer'
-import { parity } from './util'
+import { isWhitespace, parity } from './util'
 
 const MEM_SPECIAL = 'SPECIAL OR NONEXISTENT MEMORY'
 const MEM_AVAIL = 'AVAILABLE'
@@ -22,8 +22,7 @@ const MEMORY_SUMMARY_GAP_TABLE_DATA: TableData<string[]> = {
   rowsPerPage: 45,
   reflowLastPage: false,
   pageHeader: ['MEMORY TYPE & AVAILABILITY DISPLAY'],
-  entryString: (context: PrintContext, entry: string[]) => entry.join(' ').padEnd(60),
-  separator: () => false
+  entryString: memoryEntryString
 }
 
 const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
@@ -34,8 +33,12 @@ const MEMORY_SUMMARY_YUL_TABLE_DATA: TableData<string[]> = {
   rowBreaks: 4,
   reflowLastPage: true,
   pageHeader: ['MEMORY TYPE & AVAILABILITY DISPLAY'],
-  entryString: (context: PrintContext, entry: string[]) => entry.join(' ').padEnd(60),
-  separator: () => false
+  entryString: memoryEntryString
+}
+
+function memoryEntryString (context: PrintContext, entry: string[], row: number): string | undefined {
+  const str = entry.join(' ').padEnd(60)
+  return row === 0 && isWhitespace(str) ? undefined : str
 }
 
 export function printMemorySummary (pass2: Pass2Output, context: PrintContext): void {
@@ -461,8 +464,7 @@ const OCCUPIED_TABLE_DATA: TableData<[number, OccupiedContext]> = {
   rowsPerPage: 50,
   rowBreaks: 4,
   tableHeader: 'OCCUPIED LOCATIONS' + '  ' + 'PAGE'.padEnd(OCCUPIED_COLUMNS.Page),
-  entryString: occupiedEntryString,
-  separator: () => false
+  entryString: occupiedEntryString
 }
 
 function occupiedEntryString (print: PrintContext, data: [number, OccupiedContext]): string | undefined {

@@ -337,8 +337,7 @@ const COUNT_TABLE_DATA: TableData<CountContext> = {
   rowBreaks: 4,
   rowsPerPage: 50,
   tableHeader: 'ROUTINE: COUNT DATA FOR ROUTINE\'S LAST REACH:TOTAL:CUMUL',
-  entryString: countEntryString,
-  separator: () => false
+  entryString: countEntryString
 }
 
 function countEntryString (print: PrintContext, context: CountContext): string | undefined {

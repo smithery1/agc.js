@@ -251,9 +251,9 @@ function usage (app: string): void {
       RAY Raytheon assembler, suitable for SuperJob
         The Raytheon assembly has no tables, but uses GAP-type EOL output
       Y1965 YUL 1965, suitable for Retread
-        EOL output differences vs B1966
+        EOL output differences vs Y1966E
       Y1966E YUL 1966 Early, suitable for Aurora12 and Solarium055
-        EOL output differences vs Y1966
+        EOL output differences vs Y1966L
       Y1966L YUL 1966 Late, suitable for Sunburst37
         EOL output differences vs GAP
       Y1967 YUL 1967, suitable for Sunburst120

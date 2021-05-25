@@ -185,7 +185,7 @@ export function createMemory (options: Options): Memory {
 export abstract class Memory {
   private readonly erasableBanksCount: number
   private readonly fixedMemoryStartAddress: number
-  private readonly highMemory: number
+  private readonly maxMemory: number
 
   constructor (
     private readonly ranges: MemoryRange[],
@@ -197,7 +197,16 @@ export abstract class Memory {
       return this.isErasable(range.type) ? total + 1 : total
     }, 0)
     this.fixedMemoryStartAddress = ranges.find(range => this.isFixed(range.type))?.min ?? 0
-    this.highMemory = ranges[ranges.length - 1].max
+    this.maxMemory = ranges[ranges.length - 1].max
+  }
+
+  /**
+   * Returns the maximum memory cell, which may not be available for use, as a true address
+   *
+   * @returns the maximum memory cell, which may not be available for use, as a true address
+   */
+  maxAddress (): number {
+    return this.maxMemory
   }
 
   /**
@@ -386,7 +395,7 @@ export abstract class Memory {
       return this.asFixedBankAndAddress(trueAddress)
     } else if (type !== MemoryType.Nonexistent) {
       return { address: trueAddress }
-    } else if (trueAddress <= this.highMemory) {
+    } else if (trueAddress <= this.maxMemory) {
       return this.asFixedBankAndAddress(trueAddress)
     }
   }
@@ -513,7 +522,7 @@ export abstract class Memory {
   cellCount (): number {
     const unaddressable = this.nonExistent.reduce(
       (total: number, range: MemoryRange) => { return total + range.max - range.min + 1 }, 0)
-    return this.highMemory - unaddressable + 1
+    return this.maxMemory - unaddressable + 1
   }
 
   /**

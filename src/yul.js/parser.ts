@@ -501,9 +501,10 @@ export class Parser {
       } else if (input.parsedOp.op === this.operations.operation('SETLOC') && this.options.source.isRaytheon()) {
         parsed = this.parseSuperSetloc(operand)
       } else {
-        const rangeAllowed = input.parsedOp.op === this.operations.operation('ERASE')
-        || input.parsedOp.op === this.operations.operation('MEMORY')
-        parsed = field.parse(operand, ops.Necessity.Never, rangeAllowed, this.options, this.cardCusses)
+        const isMemory = input.parsedOp.op === this.operations.operation('MEMORY')
+        const rangeAllowed = isMemory || input.parsedOp.op === this.operations.operation('ERASE')
+        const max = isMemory ? this.memory.maxAddress() : utils.MAX_15_BITS
+        parsed = field.parseMax(operand, ops.Necessity.Never, rangeAllowed, max, this.options, this.cardCusses)
       }
       if (parsed === undefined) {
         return { lexedLine: input.lexedLine }

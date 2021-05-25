@@ -36,7 +36,6 @@ number changes and does not write temporary files or replace the input files.
 """
 
 import argparse
-import os
 import re
 from pathlib import Path
 
@@ -48,7 +47,7 @@ def dryRun(file):
     input = Path(mainDirectory, file)
     with open(input, "r") as f_read:
         for line in f_read:
-            parseLine(line, dryRun)
+            parseLine(line.strip(), dryRun)
 
 def renumber(file):
     changes = False
@@ -56,12 +55,12 @@ def renumber(file):
     output = Path(mainDirectory, file + ".renumber")
     with open(input, "r") as f_read, open(output, "w") as f_write:
         for line in f_read:
-            parsed = parseLine(line, renumber)
+            parsed = parseLine(line.strip(), renumber)
             if parsed:
                 changes = True
-                f_write.write(parsed)
+                f_write.writelines(parsed)
             else:
-                f_write.write(line)
+                f_write.writelines(line)
 
     if not changes:
         output.unlink()
@@ -92,6 +91,9 @@ if __name__ == "__main__":
         '-n', '--dryrun', action = 'store_true',
         help = 'print results but do not modify files')
     arg_parser.add_argument(
+        '-p', '--page', type = int, default = 1,
+        help = 'the starting page number')
+    arg_parser.add_argument(
         'main', action = 'extend', nargs = '+',
         metavar = '<main AGC file>', help = 'the MAIN.agc file')
     args = arg_parser.parse_args()
@@ -99,7 +101,7 @@ if __name__ == "__main__":
     isDryRun = args.dryrun
     for mainFile in args.main:
         print(mainFile)
-        nextPage = 1
+        nextPage = args.page
         mainPath = Path(mainFile)
         mainDirectory = mainPath.parent
         if args.dryrun:
