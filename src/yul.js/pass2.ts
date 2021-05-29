@@ -877,7 +877,7 @@ export class Pass2Assembler {
       return
     } else if (address >= range.max - 1) {
       // Need to reserve the last word in the bank for the checksum itself
-      assembled.assemblerContext = '0 WORDS LEFT'
+      assembled.assemblerContext = ' 0 WORDS LEFT'
       assembled.refAddress = undefined
       assembled.extent = 0
       this.bnkSums.push({ definition: assembled, bank, startAddress: range.min, sumAddress: range.max })
@@ -889,7 +889,7 @@ export class Pass2Assembler {
 
     ++address
     const remaining = range.max - address
-    assembled.assemblerContext = remaining.toString() + ' WORDS LEFT'
+    assembled.assemblerContext = remaining.toString(10).padStart(2) + ' WORDS LEFT'
     const bankAndAddress = this.memory.asSwitchedBankAndAddress(address)
     if (bankAndAddress === undefined) {
       getCusses(assembled).add(cusses.Cuss3F, 'Unexpected address out of range')

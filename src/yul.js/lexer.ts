@@ -168,7 +168,11 @@ function formatRemark (commentStartIndex: number, line: string): string | undefi
     }
   }
 
-  return output + line.substring(lastAppend)
+  const remark = output + line.substring(lastAppend)
+  if (remark.length > 0 && remark.charAt(0) === ' ') {
+    return remark.substring(1)
+  }
+  return remark
 }
 
 function lexInstruction (sourceLine: SourceLine, remark?: string): LexedLine | undefined {

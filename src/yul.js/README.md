@@ -8,7 +8,7 @@ YUL ran on a [Honeywell 800 Data Processing System](https://en.wikipedia.org/wik
 
 YUL was ported by contractors sometime in 1967 to run on the lab's new IBM 360 Model 75[[2]](#2). It was renamed GAP and several enhancements and a few incompatibilities were introduced. This document and the yul.js source code use the generic "YUL" when referencing an AGC assembler. Where a distinction is necessary, either "GAP" is used or the context makes clear that "YUL" references that particular assembler.
 
-The yul.js program is not an emulation of YUL or GAP, nor does it attempt to reproduce their internals or behavior. It simply reads in source in yaYUL format (see below) and writes out assembled binary. For fun, however, it does mimic some of the original YUL and GAP output. It can run in various YUL modes corresponding to versions of the YUL assembler and corresponding code bases, or in GAP mode (the default). The YUL modes are required for some early code bases.
+The yul.js program is not an emulation of YUL or GAP, nor does it attempt to reproduce their internals or behavior. It simply reads in source in yaYUL format (see below) and writes out assembled binary and some of the original YUL and GAP style output. It can run in various YUL modes corresponding to versions of the YUL assembler and corresponding code bases, or in GAP mode (the default). The YUL modes are required for some early code bases.
 
 ## Input
 
@@ -33,7 +33,7 @@ The yaYUL comments that identify the original printout page numbers, in the form
 
 The primary output of yul.js is the assembled binary code.
 
-It also outputs some of the same things that YUL did. This is mostly for amusement, but can be helpful in checking the existing source code and developing new programs.
+It also outputs most of the same text that YUL and GAP did. The end of listing tables in particular are exact character by character replicas of the originals.
 - An assembly listing with the location and binary code for each line, including error messages with original YUL "Cuss" codes and text
 - The symbol table (featuring H-800 and EBCDIC sorting!)
 - The undefined symbols, if any

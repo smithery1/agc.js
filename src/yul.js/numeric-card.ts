@@ -86,12 +86,11 @@ function lexSimpleDecimal (token: string, localCusses: cusses.Cusses): Words | u
 
 function lexDecimal (
   token: string, isDp: boolean, isExtended: boolean, localCusses: cusses.Cusses): Words | undefined {
-  const parsedParts = numericParts(token, isExtended)
-  if (cusses.isCuss(parsedParts)) {
-    localCusses.add(parsedParts)
+  const parsed = numericParts(token, isExtended)
+  if (cusses.isCuss(parsed)) {
+    localCusses.add(parsed)
     return undefined
   }
-  const parsed = parsedParts
 
   const { whole, fractional } = checkTruncate(parsed.mantissa, false, localCusses)
 
@@ -136,12 +135,11 @@ function lexDecimal (
 
 function lexOctal (
   token: string, isDp: boolean, isExtended: boolean, localCusses: cusses.Cusses): Words | undefined {
-  const parsedParts = numericParts(token, isExtended)
-  if (cusses.isCuss(parsedParts)) {
-    localCusses.add(parsedParts)
+  const parsed = numericParts(token, isExtended)
+  if (cusses.isCuss(parsed)) {
+    localCusses.add(parsed)
     return undefined
   }
-  const parsed = parsedParts
 
   if (parsed.mantissa !== undefined
     && (!OCTAL_EXPR.test(parsed.mantissa.whole) || !OCTAL_EXPR.test(parsed.mantissa.fractional))) {
